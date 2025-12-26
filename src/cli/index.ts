@@ -22,23 +22,20 @@ export class W2MCLI {
     this.setupMessageHandler();
     this.setupInputHandler();
     
-    // Mostrar menú inicial
-    this.showMenu();
-    
-    // Verificar estado y mostrar prompt con estado correcto
-    // Usar un pequeño delay para asegurar que el ingestor esté inicializado
+    // Mostrar menú inicial después de un pequeño delay
     setTimeout(() => {
+      this.showMenu();
       this.prompt();
-    }, 200);
+    }, 300);
     
-    // Registrar callback para cuando se conecte (actualizar prompt)
+    // Registrar callback para cuando se conecte (actualizar menú)
     this.ingestor.onConnected(() => {
-      // Pequeño delay para que los logs no interfieran
       setTimeout(() => {
-        // Limpiar línea actual y mostrar prompt con nuevo estado
+        // Limpiar y actualizar menú con nuevo estado
         process.stdout.write('\r' + ' '.repeat(80) + '\r');
+        this.showMenu();
         this.prompt();
-      }, 500);
+      }, 300);
     });
   }
 
@@ -46,70 +43,45 @@ export class W2MCLI {
    * Configurar handler para mostrar mensajes del grupo "Pc" inmediatamente
    */
   private setupMessageHandler(): void {
-    logger.info('🔧 Configurando handler de mensajes del grupo "Pc"');
     this.ingestor.onPcGroupMessage((message) => {
-      logger.info({ message }, '📨 Callback de mensaje recibido en CLI');
       this.displayMessageImmediately(message);
     });
-    logger.info('✅ Handler de mensajes configurado');
   }
 
   /**
    * Mostrar mensaje inmediatamente, pausando el readline si es necesario
    */
   private displayMessageImmediately(message: { group: string; sender: string; timestamp: string; content: string }): void {
-    logger.info({ message }, '🖥️ Mostrando mensaje en consola');
-    
     try {
       // Pausar readline para poder imprimir sin interferir con el prompt
       this.rl.pause();
-      logger.debug('⏸️ Readline pausado');
       
       // Limpiar la línea actual del prompt
       process.stdout.write('\r' + ' '.repeat(80) + '\r');
       
-      // Imprimir el mensaje
-      console.log('\n═══════════════════════════════════════════════════════');
-      console.log(`📱 Grupo: ${message.group}`);
-      console.log(`👤 De: ${message.sender}`);
-      console.log(`🕐 ${message.timestamp}`);
-      console.log('───────────────────────────────────────────────────────');
-      console.log(message.content);
-      console.log('═══════════════════════════════════════════════════════\n');
-      
-      logger.debug('✅ Mensaje impreso en consola');
+      // Imprimir el mensaje de forma compacta
+      console.log(`\n💬 [${message.group}] ${message.sender}: ${message.content}\n`);
       
       // Reanudar readline y mostrar el prompt de nuevo
       this.rl.resume();
-      logger.debug('▶️ Readline reanudado');
       this.prompt();
-      logger.debug('✅ Prompt restaurado');
     } catch (error) {
-      logger.error({ error }, '❌ Error al mostrar mensaje');
       // Intentar restaurar el prompt de todas formas
       try {
         this.rl.resume();
         this.prompt();
       } catch (e) {
-        logger.error({ error: e }, '❌ Error crítico al restaurar prompt');
+        // Ignorar errores de restauración
       }
     }
   }
 
   private showMenu(): void {
-    console.log('\n');
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('📱 W2M - WhatsApp to Markdown');
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('');
-    console.log('Opciones disponibles:');
-    console.log('  1 - Generar código QR para conectar WhatsApp');
-    console.log('  2 - Ver estado de conexión');
-    console.log('  3 - Desconectar WhatsApp');
-    console.log('  4 - Revisar grupo "Pc"');
-    console.log('  5 - Salir');
-    console.log('');
-    // No llamar prompt() aquí - se llamará después con el estado correcto
+    const status = this.ingestor.isConnected() ? '✅ Conectado' : '❌ Desconectado';
+    console.log(`\n📱 W2M - WhatsApp to Markdown [${status}]`);
+    console.log('─────────────────────────────────────────────────────');
+    console.log('1) QR  |  2) Estado  |  3) Desconectar  |  4) Grupo Pc  |  5) Salir');
+    console.log('─────────────────────────────────────────────────────');
   }
 
   private prompt(): void {

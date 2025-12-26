@@ -29,17 +29,7 @@ process.on('SIGINT', async () => {
 const cli = new W2MCLI(ingestor);
 cli.start();
 
-// Loguear a stderr DESPUÉS de que el CLI esté listo (con un pequeño delay)
-// Esto evita que los logs aparezcan justo después del prompt
-setTimeout(() => {
-  logger.info('🚀 W2M - WhatsApp to Markdown');
-  logger.info({ timestamp: new Date().toISOString() }, '📅 Iniciado');
-  logger.info('⚙️ Configuración cargada');
-  
-  // Intentar conectar automáticamente si hay credenciales guardadas
-  ingestor.start().then(() => {
-    logger.info('🔄 Intentando conectar automáticamente...');
-  }).catch((error) => {
-    logger.info('💡 No hay sesión guardada o error al conectar. Usa la opción 1 para generar QR.');
-  });
-}, 100);
+// Intentar conectar automáticamente si hay credenciales guardadas (silenciosamente)
+ingestor.start().catch(() => {
+  // Error silencioso - el usuario puede generar QR manualmente
+});

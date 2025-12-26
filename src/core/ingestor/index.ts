@@ -113,7 +113,7 @@ export class WhatsAppIngestor {
       auth: state,
       browser: Browsers.ubuntu('W2M'),
       // Reducir verbosidad de logs de Baileys - solo errores y warnings
-      logger: logger.child({ component: 'baileys' }, { level: 'warn' }),
+      logger: logger.child({ component: 'baileys' }, { level: 'error' }),
       getMessage: async () => undefined, // No cachear mensajes
       syncFullHistory: false,
       markOnlineOnConnect: false,
@@ -125,11 +125,7 @@ export class WhatsAppIngestor {
     this.socket.ev.on('creds.update', async (creds) => {
       await saveCreds();
       
-      // Si el pairing se completó exitosamente (tenemos creds.me pero no estamos conectados),
-      // WhatsApp requerirá reiniciar la conexión, pero lo manejamos en connection.update
-      if (creds.me && this.connectionState !== 'connected') {
-        logger.info('✅ Credenciales guardadas. Esperando reinicio de conexión...');
-      }
+      // Credenciales guardadas automáticamente
     });
 
     // Manejar conexión
@@ -235,12 +231,11 @@ export class WhatsAppIngestor {
           logger.error('❌ Sesión cerrada. Necesitas escanear el QR de nuevo.');
         }
       } else if (connection === 'open') {
-        logger.info('✅ Conectado a WhatsApp exitosamente!');
         this.isConnecting = false;
         this.connectionState = 'connected';
-        this.currentQR = null; // Limpiar QR cuando se conecta
+        this.currentQR = null;
         
-        // Marcar sincronización inicial - esperar 5 segundos para que termine
+        // Marcar sincronización inicial
         this.isInitialSync = true;
         if (this.initialSyncTimeout) clearTimeout(this.initialSyncTimeout);
         this.initialSyncTimeout = setTimeout(() => {
@@ -252,7 +247,6 @@ export class WhatsAppIngestor {
         this.connectionCallbacks.forEach(callback => callback());
         this.connectionCallbacks.clear();
       } else if (connection === 'connecting') {
-        logger.info('🔄 Conectando a WhatsApp...');
         this.connectionState = 'connecting';
       }
     });
@@ -260,113 +254,39 @@ export class WhatsAppIngestor {
     this.socket.ev.on('messages.upsert', async (m) => {
       const messages = m.messages;
       
-      // DEBUG: Loggear todos los eventos de mensajes
-      logger.info(
-        {
-          messageCount: messages.length,
-          type: m.type,
-          isInitialSync: this.isInitialSync,
-        },
-        '🔔 Evento messages.upsert recibido'
-      );
-      
       for (const message of messages) {
-        const remoteJid = message.key.remoteJid;
-        const messageId = message.key.id;
-        const fromMe = message.key.fromMe;
+        const remoteJid = message.key?.remoteJid;
+        const messageId = message.key?.id;
+        const fromMe = message.key?.fromMe || false;
         const messageTimestamp = message.messageTimestamp;
         
-        // DEBUG: Loggear TODOS los mensajes que llegan
-        logger.info(
-          {
-            remoteJid,
-            messageId,
-            fromMe,
-            type: m.type,
-            timestamp: messageTimestamp,
-            isInitialSync: this.isInitialSync,
-            hasMessage: !!message.message,
-          },
-          '📨 Mensaje recibido (antes de filtrar)'
-        );
-        
-        // NO ignorar mensajes propios - queremos capturar TODOS los mensajes del grupo "Pc"
-        // Incluyendo los que enviamos nosotros mismos
-        if (fromMe) {
-          logger.debug({ remoteJid, messageId }, '📤 Mensaje propio (procesando también)');
-        }
-        
-        // Filtrar mensajes del historial:
-        // - Mensajes recibidos durante la sincronización inicial (primeros 5 segundos)
-        // - Mensajes sin timestamp o con timestamp muy antiguo (más de 2 minutos)
-        // NOTA: No filtramos por m.type === 'notify' porque los mensajes nuevos también pueden venir así
+        // Filtrar mensajes del historial
         const now = Date.now() / 1000;
         const isHistoryMessage = 
           this.isInitialSync ||
           !messageTimestamp ||
-          (typeof messageTimestamp === 'number' && (now - messageTimestamp) > 120); // Más de 2 minutos = historial
+          (typeof messageTimestamp === 'number' && (now - messageTimestamp) > 120);
         
         if (isHistoryMessage) {
-          logger.info(
-            {
-              remoteJid,
-              messageId,
-              type: m.type,
-              timestamp: messageTimestamp,
-              isInitialSync: this.isInitialSync,
-              timeDiff: messageTimestamp ? (now - (messageTimestamp as number)) : null,
-            },
-            '📜 Mensaje del historial (ignorado)'
-          );
           continue;
         }
         
-        logger.info(
-          {
-            remoteJid,
-            messageId,
-            type: m.type,
-            timestamp: messageTimestamp,
-          },
-          '✅ Mensaje nuevo detectado (procesando...)'
-        );
-        
-        // Este es un mensaje nuevo - procesarlo
-        // Solo procesar mensajes de grupos (terminan en @g.us)
+        // Solo procesar mensajes de grupos
         if (!remoteJid || !remoteJid.endsWith('@g.us')) {
-          logger.debug({ remoteJid }, '⏭️ No es un grupo (ignorado)');
           continue;
         }
-        
-        logger.info({ remoteJid }, '✅ Es un grupo, obteniendo metadata...');
 
         // Obtener metadata del grupo para verificar el nombre
         try {
           if (!this.socket) continue;
           
-          logger.info({ remoteJid }, '🔍 Obteniendo metadata del grupo...');
           const groupMetadata = await this.socket.groupMetadata(remoteJid);
           const groupName = groupMetadata.subject || 'Sin nombre';
           
-          logger.info(
-            {
-              remoteJid,
-              groupName,
-              groupNameLower: groupName.toLowerCase(),
-            },
-            '📋 Metadata del grupo obtenida'
-          );
-          
           // Filtrar solo el grupo "Pc" (case-insensitive)
           if (groupName.toLowerCase() !== 'pc') {
-            logger.debug(
-              { groupName, expected: 'pc' },
-              '⏭️ No es el grupo "Pc" (ignorado)'
-            );
             continue;
           }
-          
-          logger.info({ groupName }, '✅ Es el grupo "Pc"! Procesando mensaje...');
 
           // Extraer contenido del mensaje
           const messageContent = this.extractMessageContent(message);
@@ -525,13 +445,6 @@ export class WhatsAppIngestor {
     }
 
     // Otros tipos de mensaje
-    logger.warn(
-      {
-        messageId,
-        messageKeys: Object.keys(msg),
-      },
-      '⚠️ Tipo de mensaje no reconocido'
-    );
     return '[Mensaje no soportado]';
   }
 
