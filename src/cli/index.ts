@@ -12,7 +12,12 @@ export class W2MCLI {
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
+      terminal: true,
+      removeHistoryDuplicates: true,
     });
+    
+    // Suprimir caracteres de control que readline puede mostrar
+    this.rl.setPrompt('');
   }
 
   start(): void {
@@ -37,7 +42,11 @@ export class W2MCLI {
 
   private prompt(): void {
     const status = this.ingestor.isConnected() ? '✅ Conectado' : '❌ Desconectado';
+    
+    // Usar question con mejor manejo del input
     this.rl.question(`[${status}] Selecciona una opción (1-4): `, (answer) => {
+      // Limpiar la línea después de recibir la respuesta
+      process.stdout.write('\r' + ' '.repeat(80) + '\r');
       this.handleInput(answer.trim());
     });
   }
@@ -63,8 +72,8 @@ export class W2MCLI {
   }
 
   private async generateQR(): Promise<void> {
-    // Limpiar la línea del prompt antes de mostrar el mensaje
-    this.rl.write(null, { ctrl: true, name: 'u' }); // Limpiar línea actual
+    // Limpiar la línea del prompt (mover cursor al inicio y limpiar)
+    process.stdout.write('\r' + ' '.repeat(80) + '\r'); // Limpiar línea
     console.log('\n🔄 Generando código QR...\n');
     
     if (this.ingestor.isConnected()) {

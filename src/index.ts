@@ -8,11 +8,6 @@ import { getConfig } from './config/index.js';
 
 const config = getConfig();
 
-// Loguear a stderr para no interferir con el CLI
-logger.info('🚀 W2M - WhatsApp to Markdown');
-logger.info({ timestamp: new Date().toISOString() }, '📅 Iniciado');
-logger.info('⚙️ Configuración cargada');
-
 // Inicializar ingestor de WhatsApp
 const ingestor = new WhatsAppIngestor();
 
@@ -30,9 +25,15 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-// Iniciar CLI interactivo (esto mostrará el menú en stdout)
+// Iniciar CLI interactivo PRIMERO (esto mostrará el menú en stdout)
 const cli = new W2MCLI(ingestor);
 cli.start();
 
-// Este log va a stderr, no interfiere con el CLI
-logger.info('✅ W2M está corriendo. Usa el CLI para generar el código QR.');
+// Loguear a stderr DESPUÉS de que el CLI esté listo (con un pequeño delay)
+// Esto evita que los logs aparezcan justo después del prompt
+setTimeout(() => {
+  logger.info('🚀 W2M - WhatsApp to Markdown');
+  logger.info({ timestamp: new Date().toISOString() }, '📅 Iniciado');
+  logger.info('⚙️ Configuración cargada');
+  logger.info('✅ W2M está corriendo. Usa el CLI para generar el código QR.');
+}, 100);
