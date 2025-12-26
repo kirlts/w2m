@@ -9,7 +9,7 @@ import type { WASocket } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import { getConfig } from '../../config/index.js';
 import { logger } from '../../utils/logger.js';
-import * as qrcode from 'qrcode-terminal';
+import qrcode from 'qrcode-terminal';
 
 export class WhatsAppIngestor {
   private socket: WASocket | null = null;
