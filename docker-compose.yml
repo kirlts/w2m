@@ -5,6 +5,8 @@ services:
     image: ghcr.io/kirlts/w2m:latest
     container_name: w2m
     restart: unless-stopped
+    stdin_open: true  # Permitir entrada interactiva
+    tty: true         # Asignar pseudo-TTY
     
     # Límites de recursos para EC2 t3.small (2GB RAM)
     deploy:

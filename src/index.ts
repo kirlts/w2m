@@ -2,6 +2,7 @@
 // Entry point de la aplicación
 
 import { WhatsAppIngestor } from './core/ingestor/index.js';
+import { W2MCLI } from './cli/index.js';
 import { logger } from './utils/logger.js';
 import { getConfig } from './config/index.js';
 
@@ -27,10 +28,8 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-// Iniciar ingestor
-ingestor.start().catch((error) => {
-  logger.error({ error }, '❌ Error fatal al iniciar ingestor');
-  process.exit(1);
-});
+// Iniciar CLI interactivo
+const cli = new W2MCLI(ingestor);
+cli.start();
 
-logger.info('✅ W2M está corriendo. Esperando conexión a WhatsApp...');
+logger.info('✅ W2M está corriendo. Usa el CLI para generar el código QR.');

@@ -16,6 +16,27 @@ export class WhatsAppIngestor {
   private config = getConfig();
   private reconnectInterval: NodeJS.Timeout | null = null;
   private isConnecting = false;
+  private currentQR: string | null = null;
+  private qrCallback: ((qr: string) => void) | null = null;
+
+  async generateQR(): Promise<void> {
+    logger.info('🔄 Generando código QR...');
+    
+    if (this.isConnecting || this.socket) {
+      logger.warn('⚠️ Ya hay una conexión en progreso. Desconecta primero.');
+      return;
+    }
+
+    this.isConnecting = true;
+
+    try {
+      await this.connect(true); // true = solo generar QR, no reconectar automáticamente
+    } catch (error) {
+      logger.error({ error }, '❌ Error al generar QR');
+      this.isConnecting = false;
+      throw error;
+    }
+  }
 
   async start(): Promise<void> {
     logger.info('🚀 Iniciando WhatsApp Ingestor...');
@@ -28,15 +49,15 @@ export class WhatsAppIngestor {
     this.isConnecting = true;
 
     try {
-      await this.connect();
+      await this.connect(false); // false = conectar normalmente
     } catch (error) {
       logger.error({ error }, '❌ Error al iniciar ingestor');
       this.isConnecting = false;
-      this.scheduleReconnect();
+      // No reconectar automáticamente - el usuario debe generar QR manualmente
     }
   }
 
-  private async connect(): Promise<void> {
+  private async connect(generateQROnly: boolean = false): Promise<void> {
     const { state, saveCreds } = await useMultiFileAuthState(
       this.config.WA_SESSION_PATH
     );
@@ -99,15 +120,15 @@ export class WhatsAppIngestor {
         this.socket = null;
         this.isConnecting = false;
 
-        if (shouldReconnect) {
-          this.scheduleReconnect();
-        } else {
+        // No reconectar automáticamente - el usuario debe generar QR manualmente
+        if (!shouldReconnect) {
           logger.error('❌ Sesión cerrada. Necesitas escanear el QR de nuevo.');
         }
       } else if (connection === 'open') {
         logger.info('✅ Conectado a WhatsApp exitosamente!');
         this.isConnecting = false;
         this.clearReconnectInterval();
+        this.currentQR = null; // Limpiar QR cuando se conecta
       } else if (connection === 'connecting') {
         logger.info('🔄 Conectando a WhatsApp...');
       }
@@ -133,21 +154,8 @@ export class WhatsAppIngestor {
     });
   }
 
-  private scheduleReconnect(): void {
-    if (this.reconnectInterval) {
-      return;
-    }
-
-    logger.info(
-      { interval: this.config.WA_RECONNECT_INTERVAL },
-      `🔄 Reintentando conexión en ${this.config.WA_RECONNECT_INTERVAL / 1000}s...`
-    );
-
-    this.reconnectInterval = setTimeout(() => {
-      this.reconnectInterval = null;
-      this.start();
-    }, this.config.WA_RECONNECT_INTERVAL);
-  }
+  // Método removido - no reconectamos automáticamente
+  // El usuario debe generar QR manualmente a través del CLI
 
   private clearReconnectInterval(): void {
     if (this.reconnectInterval) {
