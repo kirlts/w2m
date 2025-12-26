@@ -292,78 +292,44 @@ export class WhatsAppIngestor {
           const messageContent = this.extractMessageContent(message);
           
           // Para mensajes propios, usar nuestro propio JID
-          const senderJid = message.key.fromMe 
+          const fromMe = message.key?.fromMe || false;
+          const senderJid = fromMe 
             ? (this.socket?.user?.id || remoteJid)
-            : (message.key.participant || remoteJid);
-          const senderName = message.key.fromMe 
+            : (message.key?.participant || remoteJid);
+          const senderName = fromMe 
             ? 'Yo' 
             : this.getSenderName(message, groupMetadata, senderJid);
           
-          logger.info(
-            {
-              fromMe: message.key.fromMe,
-              senderJid,
-              senderName,
-              messageContent,
-            },
-            '👤 Información del remitente'
-          );
+          // Preparar datos del mensaje con formato específico
+          const messageTimestamp = message.messageTimestamp 
+            ? new Date((message.messageTimestamp as number) * 1000)
+            : new Date();
           
-          // Preparar datos del mensaje
-          const timestamp = message.messageTimestamp 
-            ? new Date((message.messageTimestamp as number) * 1000).toLocaleString('es-ES')
-            : new Date().toLocaleString('es-ES');
+          const timeStr = messageTimestamp.toLocaleTimeString('es-ES', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit' 
+          });
+          const dateStr = messageTimestamp.toLocaleDateString('es-ES', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+          });
           
           const messageData = {
-            group: groupName,
             sender: senderName,
-            timestamp,
+            time: `${timeStr} - ${dateStr}`,
             content: messageContent || '[Mensaje sin texto]',
-            messageId: message.key.id,
           };
           
-          logger.info(
-            {
-              group: groupName,
-              sender: senderName,
-              content: messageContent,
-              callbackCount: this.messageCallbacks.size,
-            },
-            '📤 Preparando para mostrar mensaje'
-          );
-          
-          // Notificar a los callbacks de mensajes (CLI puede mostrar inmediatamente)
-          if (this.messageCallbacks.size > 0) {
-            logger.info({ callbackCount: this.messageCallbacks.size }, '📞 Llamando callbacks de mensajes...');
-            this.messageCallbacks.forEach((callback, index) => {
-              try {
-                logger.debug({ callbackIndex: index }, '📞 Ejecutando callback...');
-                callback(messageData);
-                logger.debug({ callbackIndex: index }, '✅ Callback ejecutado');
-              } catch (error) {
-                logger.error({ error, callbackIndex: index }, '❌ Error en callback de mensaje');
-              }
-            });
-            logger.info('✅ Todos los callbacks ejecutados');
-          } else {
-            logger.warn('⚠️ No hay callbacks registrados, imprimiendo directamente');
-            console.log('\n═══════════════════════════════════════════════════════');
-            console.log(`📱 Grupo: ${groupName}`);
-            console.log(`👤 De: ${senderName}`);
-            console.log(`🕐 ${timestamp}`);
-            console.log('───────────────────────────────────────────────────────');
-            console.log(messageContent || '[Mensaje sin texto]');
-            console.log('═══════════════════════════════════════════════════════\n');
-          }
-          
-          logger.info(
-            {
-              group: groupName,
-              sender: senderName,
-              messageId: message.key.id,
-            },
-            '📨 Mensaje capturado del grupo "Pc"'
-          );
+          // Notificar a los callbacks de mensajes (sin logs)
+          this.messageCallbacks.forEach((callback) => {
+            try {
+              callback(messageData);
+            } catch (error) {
+              logger.error({ error }, 'Error en callback de mensaje');
+            }
+          });
         } catch (error) {
           logger.warn({ error, remoteJid }, '⚠️ Error al procesar mensaje del grupo');
         }
@@ -516,7 +482,7 @@ export class WhatsAppIngestor {
   /**
    * Registrar un callback que se ejecutará cuando se reciba un mensaje del grupo "Pc"
    */
-  onPcGroupMessage(callback: (message: { group: string; sender: string; timestamp: string; content: string; messageId: string }) => void): void {
+  onPcGroupMessage(callback: (message: { sender: string; time: string; content: string }) => void): void {
     this.messageCallbacks.add(callback);
   }
 
@@ -538,7 +504,6 @@ export class WhatsAppIngestor {
     }
 
     try {
-      logger.info('🔍 Buscando grupo "Pc"...');
       console.log('\n🔍 Buscando grupo "Pc"...\n');
 
       // Obtener todos los grupos
@@ -557,7 +522,6 @@ export class WhatsAppIngestor {
       }
 
       const groupJid = pcGroup.id;
-      logger.info({ groupJid, groupName: pcGroup.subject }, '✅ Grupo "Pc" encontrado');
 
       // Obtener metadata del grupo para información adicional
       const groupMetadata = await this.socket.groupMetadata(groupJid);
@@ -573,7 +537,6 @@ export class WhatsAppIngestor {
       console.log('💡 Los mensajes se capturan en tiempo real cuando llegan.');
       console.log('💡 Si no ves mensajes, espera a que alguien envíe uno nuevo al grupo.\n');
       
-      logger.info('✅ Información del grupo "Pc" mostrada');
     } catch (error) {
       logger.error({ error }, '❌ Error al obtener información del grupo');
       console.log('❌ Error al obtener información del grupo. Verifica los logs.\n');
