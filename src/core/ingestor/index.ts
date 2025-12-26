@@ -264,15 +264,15 @@ export class WhatsAppIngestor {
         if (message.key.fromMe) continue;
         
         // Filtrar mensajes del historial:
-        // - Mensajes con type === 'notify' son del historial
-        // - Mensajes recibidos durante la sincronización inicial
-        // - Mensajes sin timestamp o con timestamp muy antiguo
+        // - Mensajes recibidos durante la sincronización inicial (primeros 5 segundos)
+        // - Mensajes sin timestamp o con timestamp muy antiguo (más de 2 minutos)
+        // NOTA: No filtramos por m.type === 'notify' porque los mensajes nuevos también pueden venir así
         const messageTimestamp = message.messageTimestamp;
+        const now = Date.now() / 1000;
         const isHistoryMessage = 
-          m.type === 'notify' ||
           this.isInitialSync ||
           !messageTimestamp ||
-          (typeof messageTimestamp === 'number' && (Date.now() / 1000 - messageTimestamp) > 300); // Más de 5 minutos = historial
+          (typeof messageTimestamp === 'number' && (now - messageTimestamp) > 120); // Más de 2 minutos = historial
         
         if (isHistoryMessage) {
           // Solo loguear en debug, no en info
@@ -281,11 +281,24 @@ export class WhatsAppIngestor {
               from: message.key.remoteJid,
               messageId: message.key.id,
               type: m.type,
+              timestamp: messageTimestamp,
+              isInitialSync: this.isInitialSync,
             },
             '📜 Mensaje del historial (ignorado)'
           );
           continue;
         }
+        
+        // Log para debug - ver todos los mensajes nuevos
+        logger.debug(
+          {
+            from: message.key.remoteJid,
+            messageId: message.key.id,
+            type: m.type,
+            timestamp: messageTimestamp,
+          },
+          '📨 Mensaje nuevo detectado (procesando...)'
+        );
         
         // Este es un mensaje nuevo - procesarlo
         const remoteJid = message.key.remoteJid;
@@ -459,6 +472,59 @@ export class WhatsAppIngestor {
     } else {
       // Agregar a la lista de callbacks
       this.connectionCallbacks.add(callback);
+    }
+  }
+
+  /**
+   * Obtener los últimos mensajes del grupo "Pc" manualmente
+   */
+  async getRecentMessagesFromPcGroup(limit: number = 10): Promise<void> {
+    if (!this.socket || !this.isConnected()) {
+      logger.warn('⚠️ No hay conexión activa');
+      console.log('\n⚠️  No estás conectado a WhatsApp. Conecta primero con la opción 1.\n');
+      return;
+    }
+
+    try {
+      logger.info('🔍 Buscando grupo "Pc"...');
+      console.log('\n🔍 Buscando grupo "Pc"...\n');
+
+      // Obtener todos los grupos
+      const groups = await this.socket.groupFetchAllParticipating();
+      const groupList = Object.values(groups);
+      
+      // Buscar el grupo "Pc"
+      const pcGroup = groupList.find(
+        (group) => group.subject?.toLowerCase() === 'pc'
+      );
+
+      if (!pcGroup) {
+        logger.warn('⚠️ Grupo "Pc" no encontrado');
+        console.log('❌ No se encontró el grupo "Pc". Verifica que el nombre sea exactamente "Pc".\n');
+        return;
+      }
+
+      const groupJid = pcGroup.id;
+      logger.info({ groupJid, groupName: pcGroup.subject }, '✅ Grupo "Pc" encontrado');
+
+      // Obtener metadata del grupo para información adicional
+      const groupMetadata = await this.socket.groupMetadata(groupJid);
+      
+      console.log('═══════════════════════════════════════════════════════');
+      console.log(`📱 Grupo: ${groupMetadata.subject}`);
+      console.log(`👥 Participantes: ${groupMetadata.participants.length}`);
+      console.log('═══════════════════════════════════════════════════════\n');
+
+      // Intentar obtener mensajes recientes
+      // Nota: Baileys no tiene una API directa para obtener mensajes históricos
+      // Los mensajes solo se reciben en tiempo real a través de events
+      console.log('💡 Los mensajes se capturan en tiempo real cuando llegan.');
+      console.log('💡 Si no ves mensajes, espera a que alguien envíe uno nuevo al grupo.\n');
+      
+      logger.info('✅ Información del grupo "Pc" mostrada');
+    } catch (error) {
+      logger.error({ error }, '❌ Error al obtener información del grupo');
+      console.log('❌ Error al obtener información del grupo. Verifica los logs.\n');
     }
   }
 }

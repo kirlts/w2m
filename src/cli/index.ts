@@ -33,7 +33,8 @@ export class W2MCLI {
     console.log('  1 - Generar código QR para conectar WhatsApp');
     console.log('  2 - Ver estado de conexión');
     console.log('  3 - Desconectar WhatsApp');
-    console.log('  4 - Salir');
+    console.log('  4 - Revisar grupo "Pc"');
+    console.log('  5 - Salir');
     console.log('');
     this.prompt();
   }
@@ -42,7 +43,7 @@ export class W2MCLI {
     const status = this.ingestor.isConnected() ? '✅ Conectado' : '❌ Desconectado';
     
     // Usar question con mejor manejo del input
-    this.rl.question(`[${status}] Selecciona una opción (1-4): `, (answer) => {
+    this.rl.question(`[${status}] Selecciona una opción (1-5): `, (answer) => {
       const trimmed = answer.trim();
       if (trimmed) {
         // Limpiar la línea después de recibir la respuesta
@@ -67,10 +68,13 @@ export class W2MCLI {
         this.disconnect();
         break;
       case '4':
+        this.checkPcGroup();
+        break;
+      case '5':
         this.exit();
         break;
       default:
-        console.log('❌ Opción inválida. Por favor selecciona 1-4.\n');
+        console.log('❌ Opción inválida. Por favor selecciona 1-5.\n');
         this.prompt();
     }
   }
@@ -137,6 +141,12 @@ export class W2MCLI {
     console.log('\n🔄 Desconectando...\n');
     await this.ingestor.stop();
     console.log('✅ Desconectado exitosamente.\n');
+    this.prompt();
+  }
+
+  private async checkPcGroup(): Promise<void> {
+    process.stdout.write('\r' + ' '.repeat(80) + '\r');
+    await this.ingestor.getRecentMessagesFromPcGroup();
     this.prompt();
   }
 
