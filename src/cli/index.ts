@@ -90,13 +90,30 @@ export class W2MCLI {
       // El QR se mostrará directamente desde el ingestor
       await this.ingestor.generateQR();
       
-      // No mostrar mensaje aquí - el QR ya se mostró
-      // El prompt se mostrará después de que el usuario vea el QR
-      // Esperar un poco para que el usuario vea el QR antes de mostrar el prompt
+      // NO mostrar el prompt automáticamente
+      // El prompt se mostrará cuando:
+      // 1. La conexión se establezca exitosamente (manejado en connection.update)
+      // 2. El usuario presione Enter o escriba algo (manejado por readline)
+      // 3. O después de 60 segundos si el QR expira
+      
+      // Configurar un listener para cuando se conecte
+      const checkConnection = setInterval(() => {
+        if (this.ingestor.isConnected()) {
+          clearInterval(checkConnection);
+          console.log('\n✅ Conectado exitosamente!\n');
+          this.prompt();
+        }
+      }, 1000);
+      
+      // Limpiar el intervalo después de 70 segundos (60s para QR + 10s de margen)
       setTimeout(() => {
-        console.log('\n'); // Línea en blanco después del QR
-        this.prompt();
-      }, 3000);
+        clearInterval(checkConnection);
+        if (!this.ingestor.isConnected()) {
+          console.log('\n⏱️  El QR expiró. Puedes generar uno nuevo con la opción 1.\n');
+          this.prompt();
+        }
+      }, 70000);
+      
     } catch (error) {
       logger.error({ error }, '❌ Error al generar QR');
       console.log('❌ Error al generar QR. Intenta de nuevo.\n');
