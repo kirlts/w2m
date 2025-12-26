@@ -1,27 +1,26 @@
-version: '3.8'
-
 services:
   w2m:
-    build:
-      context: .
-      target: production
+    # Usar imagen de GitHub Container Registry (GHCR)
+    # En producción, el CI/CD actualizará automáticamente esta imagen
+    image: ghcr.io/kirlts/w2m:latest
     container_name: w2m
     restart: unless-stopped
     
-    # Límites de recursos para EC2 Free Tier (1GB RAM)
+    # Límites de recursos para EC2 t3.small (2GB RAM)
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1536M
         reservations:
-          memory: 256M
+          memory: 512M
     
     # Variables de entorno
     env_file:
       - .env
     
     environment:
-      - NODE_OPTIONS=--max-old-space-size=${NODE_MAX_OLD_SPACE:-384}
+      - NODE_OPTIONS=--max-old-space-size=${NODE_MAX_OLD_SPACE:-1024}
+      - NODE_ENV=production
       - TZ=UTC
     
     # Volúmenes persistentes
@@ -36,8 +35,8 @@ services:
       - ./data/logs:/app/data/logs
       
       # Configuración de Git (si usas SSH)
-      - ~/.ssh:/home/node/.ssh:ro
-      - ~/.gitconfig:/home/node/.gitconfig:ro
+      - ~/.ssh:/home/w2m/.ssh:ro
+      - ~/.gitconfig:/home/w2m/.gitconfig:ro
     
     # Health check
     healthcheck:
