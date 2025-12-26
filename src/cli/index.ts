@@ -43,7 +43,7 @@ export class W2MCLI {
    * Configurar handler para mostrar mensajes del grupo "Pc" inmediatamente
    */
   private setupMessageHandler(): void {
-    this.ingestor.onPcGroupMessage((message) => {
+    this.ingestor.onGroupMessage((message) => {
       this.displayMessageImmediately(message);
     });
   }
@@ -51,7 +51,7 @@ export class W2MCLI {
   /**
    * Mostrar mensaje inmediatamente, pausando el readline si es necesario
    */
-  private displayMessageImmediately(message: { sender: string; time: string; content: string }): void {
+  private displayMessageImmediately(message: { group: string; sender: string; time: string; content: string }): void {
     try {
       // Pausar readline para poder imprimir sin interferir con el prompt
       this.rl.pause();
@@ -60,7 +60,8 @@ export class W2MCLI {
       process.stdout.write('\r' + ' '.repeat(80) + '\r');
       
       // Imprimir el mensaje en el formato solicitado
-      console.log(`\nSender: ${message.sender}`);
+      console.log(`\nGroup: ${message.group}`);
+      console.log(`Sender: ${message.sender}`);
       console.log(`Time: ${message.time}`);
       console.log(`Message: ${message.content}\n`);
       
@@ -80,9 +81,10 @@ export class W2MCLI {
 
   private showMenu(): void {
     const status = this.ingestor.isConnected() ? '✅ Conectado' : '❌ Desconectado';
+    const groupCount = this.ingestor.getGroupManager().getAllGroups().length;
     console.log(`\n📱 W2M - WhatsApp to Markdown [${status}]`);
     console.log('─────────────────────────────────────────────────────');
-    console.log('1) QR  |  2) Estado  |  3) Desconectar  |  4) Grupo Pc  |  5) Salir');
+    console.log(`1) QR  |  2) Estado  |  3) Desconectar  |  4) Grupos (${groupCount})  |  5) Salir`);
     console.log('─────────────────────────────────────────────────────');
   }
 
@@ -110,7 +112,7 @@ export class W2MCLI {
         this.disconnect();
         break;
       case '4':
-        this.checkPcGroup();
+        this.manageGroups();
         break;
       case '5':
         this.exit();
@@ -186,10 +188,116 @@ export class W2MCLI {
     this.prompt();
   }
 
-  private async checkPcGroup(): Promise<void> {
+  private async manageGroups(): Promise<void> {
     process.stdout.write('\r' + ' '.repeat(80) + '\r');
-    await this.ingestor.getRecentMessagesFromPcGroup();
-    this.prompt();
+    
+    const groupManager = this.ingestor.getGroupManager();
+    const monitoredGroups = groupManager.getAllGroups();
+    
+    console.log('\n═══════════════════════════════════════════════════════');
+    console.log('📋 Gestión de Grupos Monitoreados');
+    console.log('═══════════════════════════════════════════════════════\n');
+    
+    if (monitoredGroups.length === 0) {
+      console.log('⚪ No hay grupos monitoreados.\n');
+    } else {
+      console.log('Grupos monitoreados:');
+      monitoredGroups.forEach((group, index) => {
+        console.log(`  ${index + 1}. ${group.name}${group.jid ? ` (${group.jid})` : ''}`);
+      });
+      console.log('');
+    }
+    
+    console.log('Opciones:');
+    console.log('  a) Listar grupos disponibles y agregar');
+    console.log('  b) Remover grupo monitoreado');
+    console.log('  c) Volver al menú principal\n');
+    
+    this.rl.question('Selecciona una opción (a/b/c): ', async (answer) => {
+      const trimmed = answer.trim().toLowerCase();
+      process.stdout.write('\r' + ' '.repeat(80) + '\r');
+      
+      if (trimmed === 'a') {
+        await this.addGroup();
+      } else if (trimmed === 'b') {
+        await this.removeGroup();
+      } else if (trimmed === 'c') {
+        this.showMenu();
+        this.prompt();
+        return;
+      } else {
+        console.log('❌ Opción inválida.\n');
+        this.prompt();
+        return;
+      }
+    });
+  }
+
+  private async addGroup(): Promise<void> {
+    await this.ingestor.listAvailableGroups();
+    
+    this.rl.question('\nIngresa el nombre exacto del grupo a agregar (o Enter para cancelar): ', async (answer) => {
+      const groupName = answer.trim();
+      process.stdout.write('\r' + ' '.repeat(80) + '\r');
+      
+      if (!groupName) {
+        this.showMenu();
+        this.prompt();
+        return;
+      }
+
+      const groupManager = this.ingestor.getGroupManager();
+      const added = await groupManager.addGroup(groupName);
+      
+      if (added) {
+        console.log(`✅ Grupo "${groupName}" agregado a monitoreo.\n`);
+      } else {
+        console.log(`⚠️  El grupo "${groupName}" ya está siendo monitoreado.\n`);
+      }
+      
+      this.showMenu();
+      this.prompt();
+    });
+  }
+
+  private async removeGroup(): Promise<void> {
+    const groupManager = this.ingestor.getGroupManager();
+    const monitoredGroups = groupManager.getAllGroups();
+    
+    if (monitoredGroups.length === 0) {
+      console.log('⚪ No hay grupos monitoreados para remover.\n');
+      this.showMenu();
+      this.prompt();
+      return;
+    }
+
+    console.log('\nGrupos monitoreados:');
+    monitoredGroups.forEach((group, index) => {
+      console.log(`  ${index + 1}. ${group.name}`);
+    });
+    console.log('');
+
+    this.rl.question('Ingresa el nombre del grupo a remover (o Enter para cancelar): ', async (answer) => {
+      const groupName = answer.trim();
+      process.stdout.write('\r' + ' '.repeat(80) + '\r');
+      
+      if (!groupName) {
+        this.showMenu();
+        this.prompt();
+        return;
+      }
+
+      const removed = await groupManager.removeGroup(groupName);
+      
+      if (removed) {
+        console.log(`✅ Grupo "${groupName}" removido de monitoreo.\n`);
+      } else {
+        console.log(`❌ El grupo "${groupName}" no está siendo monitoreado.\n`);
+      }
+      
+      this.showMenu();
+      this.prompt();
+    });
   }
 
   private async exit(): Promise<void> {

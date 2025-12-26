@@ -11,10 +11,12 @@ import { Boom } from '@hapi/boom';
 import { getConfig } from '../../config/index.js';
 import { logger } from '../../utils/logger.js';
 import qrcode from 'qrcode-terminal';
+import { GroupManager } from '../groups/index.js';
 
 export class WhatsAppIngestor {
   private socket: WASocket | null = null;
   private config = getConfig();
+  private groupManager: GroupManager;
   // reconnectInterval removido - no reconectamos automáticamente
   private isConnecting = false;
   private connectionState: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
@@ -23,6 +25,24 @@ export class WhatsAppIngestor {
   private messageCallbacks: Set<(message: any) => void> = new Set();
   private isInitialSync = true;
   private initialSyncTimeout: NodeJS.Timeout | null = null;
+
+  constructor(groupManager?: GroupManager) {
+    this.groupManager = groupManager || new GroupManager();
+  }
+
+  /**
+   * Inicializar el ingestor (cargar grupos monitoreados)
+   */
+  async initialize(): Promise<void> {
+    await this.groupManager.load();
+  }
+
+  /**
+   * Obtener el gestor de grupos
+   */
+  getGroupManager(): GroupManager {
+    return this.groupManager;
+  }
 
   async generateQR(): Promise<void> {
     logger.info('🔄 Generando código QR...');
@@ -283,10 +303,19 @@ export class WhatsAppIngestor {
           const groupMetadata = await this.socket.groupMetadata(remoteJid);
           const groupName = groupMetadata.subject || 'Sin nombre';
           
-          // Filtrar solo el grupo "Pc" (case-insensitive)
-          if (groupName.toLowerCase() !== 'pc') {
+          // Verificar si el grupo está siendo monitoreado
+          if (!this.groupManager.isMonitored(groupName)) {
             continue;
           }
+
+          // Actualizar el JID del grupo si no estaba guardado
+          const monitoredGroup = this.groupManager.getGroup(groupName);
+          if (monitoredGroup && !monitoredGroup.jid) {
+            await this.groupManager.updateGroupJid(groupName, remoteJid);
+          }
+
+          // Obtener el nombre original (case-sensitive) del grupo
+          const originalGroupName = this.groupManager.getOriginalName(groupName) || groupName;
 
           // Extraer contenido del mensaje
           const messageContent = this.extractMessageContent(message);
@@ -317,6 +346,7 @@ export class WhatsAppIngestor {
           });
           
           const messageData = {
+            group: originalGroupName,
             sender: senderName,
             time: `${timeStr} - ${dateStr}`,
             content: messageContent || '[Mensaje sin texto]',
@@ -482,7 +512,7 @@ export class WhatsAppIngestor {
   /**
    * Registrar un callback que se ejecutará cuando se reciba un mensaje del grupo "Pc"
    */
-  onPcGroupMessage(callback: (message: { sender: string; time: string; content: string }) => void): void {
+  onGroupMessage(callback: (message: { group: string; sender: string; time: string; content: string }) => void): void {
     this.messageCallbacks.add(callback);
   }
 
@@ -494,52 +524,44 @@ export class WhatsAppIngestor {
   }
 
   /**
-   * Obtener los últimos mensajes del grupo "Pc" manualmente
+   * Listar todos los grupos disponibles y permitir agregar uno
    */
-  async getRecentMessagesFromPcGroup(limit: number = 10): Promise<void> {
+  async listAvailableGroups(): Promise<void> {
     if (!this.socket || !this.isConnected()) {
-      logger.warn('⚠️ No hay conexión activa');
       console.log('\n⚠️  No estás conectado a WhatsApp. Conecta primero con la opción 1.\n');
       return;
     }
 
     try {
-      console.log('\n🔍 Buscando grupo "Pc"...\n');
+      console.log('\n🔍 Obteniendo lista de grupos...\n');
 
       // Obtener todos los grupos
       const groups = await this.socket.groupFetchAllParticipating();
       const groupList = Object.values(groups);
       
-      // Buscar el grupo "Pc"
-      const pcGroup = groupList.find(
-        (group) => group.subject?.toLowerCase() === 'pc'
-      );
-
-      if (!pcGroup) {
-        logger.warn('⚠️ Grupo "Pc" no encontrado');
-        console.log('❌ No se encontró el grupo "Pc". Verifica que el nombre sea exactamente "Pc".\n');
+      if (groupList.length === 0) {
+        console.log('❌ No se encontraron grupos.\n');
         return;
       }
 
-      const groupJid = pcGroup.id;
-
-      // Obtener metadata del grupo para información adicional
-      const groupMetadata = await this.socket.groupMetadata(groupJid);
-      
       console.log('═══════════════════════════════════════════════════════');
-      console.log(`📱 Grupo: ${groupMetadata.subject}`);
-      console.log(`👥 Participantes: ${groupMetadata.participants.length}`);
+      console.log('📱 Grupos Disponibles:');
       console.log('═══════════════════════════════════════════════════════\n');
 
-      // Intentar obtener mensajes recientes
-      // Nota: Baileys no tiene una API directa para obtener mensajes históricos
-      // Los mensajes solo se reciben en tiempo real a través de events
-      console.log('💡 Los mensajes se capturan en tiempo real cuando llegan.');
-      console.log('💡 Si no ves mensajes, espera a que alguien envíe uno nuevo al grupo.\n');
-      
+      const monitoredGroups = this.groupManager.getAllGroups();
+      const monitoredNames = new Set(monitoredGroups.map(g => g.name.toLowerCase()));
+
+      groupList.forEach((group, index) => {
+        const isMonitored = monitoredNames.has(group.subject?.toLowerCase() || '');
+        const status = isMonitored ? '✅ Monitoreado' : '⚪ No monitoreado';
+        console.log(`${index + 1}. ${group.subject || 'Sin nombre'} ${status}`);
+        console.log(`   👥 ${group.participants?.length || 0} participantes\n`);
+      });
+
+      console.log('═══════════════════════════════════════════════════════\n');
     } catch (error) {
-      logger.error({ error }, '❌ Error al obtener información del grupo');
-      console.log('❌ Error al obtener información del grupo. Verifica los logs.\n');
+      logger.error({ error }, 'Error al obtener grupos');
+      console.log('❌ Error al obtener grupos. Verifica los logs.\n');
     }
   }
 }

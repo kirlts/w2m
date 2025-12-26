@@ -11,6 +11,11 @@ const config = getConfig();
 // Inicializar ingestor de WhatsApp
 const ingestor = new WhatsAppIngestor();
 
+// Inicializar grupos monitoreados
+ingestor.initialize().catch((error) => {
+  logger.error({ error }, 'Error al inicializar grupos');
+});
+
 // Manejar señales de terminación
 process.on('SIGTERM', async () => {
   logger.info('🛑 Recibida señal SIGTERM, cerrando...');
@@ -29,7 +34,14 @@ process.on('SIGINT', async () => {
 const cli = new W2MCLI(ingestor);
 cli.start();
 
-// Intentar conectar automáticamente si hay credenciales guardadas (silenciosamente)
-ingestor.start().catch(() => {
-  // Error silencioso - el usuario puede generar QR manualmente
+// Inicializar grupos monitoreados y conectar automáticamente
+ingestor.initialize().then(() => {
+  // Intentar conectar automáticamente si hay credenciales guardadas (silenciosamente)
+  ingestor.start().catch(() => {
+    // Error silencioso - el usuario puede generar QR manualmente
+  });
+}).catch((error) => {
+  logger.error({ error }, 'Error al inicializar grupos');
+  // Intentar conectar de todas formas
+  ingestor.start().catch(() => {});
 });
