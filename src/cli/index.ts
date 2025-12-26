@@ -14,10 +14,8 @@ export class W2MCLI {
       output: process.stdout,
       terminal: true,
       removeHistoryDuplicates: true,
+      historySize: 0, // Deshabilitar historial para evitar problemas
     });
-    
-    // Suprimir caracteres de control que readline puede mostrar
-    this.rl.setPrompt('');
   }
 
   start(): void {
@@ -45,9 +43,15 @@ export class W2MCLI {
     
     // Usar question con mejor manejo del input
     this.rl.question(`[${status}] Selecciona una opción (1-4): `, (answer) => {
-      // Limpiar la línea después de recibir la respuesta
-      process.stdout.write('\r' + ' '.repeat(80) + '\r');
-      this.handleInput(answer.trim());
+      const trimmed = answer.trim();
+      if (trimmed) {
+        // Limpiar la línea después de recibir la respuesta
+        process.stdout.write('\r' + ' '.repeat(80) + '\r');
+        this.handleInput(trimmed);
+      } else {
+        // Si no hay input, volver a preguntar
+        this.prompt();
+      }
     });
   }
 
