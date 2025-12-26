@@ -21,6 +21,48 @@ export class W2MCLI {
   start(): void {
     this.showMenu();
     this.setupInputHandler();
+    this.setupMessageHandler();
+    
+    // Registrar callback para cuando se conecte (mostrar menú)
+    this.ingestor.onConnected(() => {
+      // Pequeño delay para que los logs no interfieran
+      setTimeout(() => {
+        this.showMenu();
+      }, 500);
+    });
+  }
+
+  /**
+   * Configurar handler para mostrar mensajes del grupo "Pc" inmediatamente
+   */
+  private setupMessageHandler(): void {
+    this.ingestor.onPcGroupMessage((message) => {
+      this.displayMessageImmediately(message);
+    });
+  }
+
+  /**
+   * Mostrar mensaje inmediatamente, pausando el readline si es necesario
+   */
+  private displayMessageImmediately(message: { group: string; sender: string; timestamp: string; content: string }): void {
+    // Pausar readline para poder imprimir sin interferir con el prompt
+    this.rl.pause();
+    
+    // Limpiar la línea actual del prompt
+    process.stdout.write('\r' + ' '.repeat(80) + '\r');
+    
+    // Imprimir el mensaje
+    console.log('\n═══════════════════════════════════════════════════════');
+    console.log(`📱 Grupo: ${message.group}`);
+    console.log(`👤 De: ${message.sender}`);
+    console.log(`🕐 ${message.timestamp}`);
+    console.log('───────────────────────────────────────────────────────');
+    console.log(message.content);
+    console.log('═══════════════════════════════════════════════════════\n');
+    
+    // Reanudar readline y mostrar el prompt de nuevo
+    this.rl.resume();
+    this.prompt();
   }
 
   private showMenu(): void {

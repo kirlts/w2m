@@ -20,6 +20,7 @@ export class WhatsAppIngestor {
   private connectionState: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
   private currentQR: string | null = null;
   private connectionCallbacks: Set<() => void> = new Set();
+  private messageCallbacks: Set<(message: any) => void> = new Set();
   private isInitialSync = true;
   private initialSyncTimeout: NodeJS.Timeout | null = null;
 
@@ -325,18 +326,38 @@ export class WhatsAppIngestor {
           const senderJid = message.key.participant || remoteJid;
           const senderName = this.getSenderName(message, groupMetadata, senderJid);
           
-          // Imprimir mensaje en consola
+          // Preparar datos del mensaje
           const timestamp = message.messageTimestamp 
             ? new Date((message.messageTimestamp as number) * 1000).toLocaleString('es-ES')
             : new Date().toLocaleString('es-ES');
           
-          console.log('\n═══════════════════════════════════════════════════════');
-          console.log(`📱 Grupo: ${groupName}`);
-          console.log(`👤 De: ${senderName}`);
-          console.log(`🕐 ${timestamp}`);
-          console.log('───────────────────────────────────────────────────────');
-          console.log(messageContent || '[Mensaje sin texto]');
-          console.log('═══════════════════════════════════════════════════════\n');
+          const messageData = {
+            group: groupName,
+            sender: senderName,
+            timestamp,
+            content: messageContent || '[Mensaje sin texto]',
+            messageId: message.key.id,
+          };
+          
+          // Notificar a los callbacks de mensajes (CLI puede mostrar inmediatamente)
+          this.messageCallbacks.forEach(callback => {
+            try {
+              callback(messageData);
+            } catch (error) {
+              logger.warn({ error }, '⚠️ Error en callback de mensaje');
+            }
+          });
+          
+          // También imprimir directamente si no hay callbacks registrados
+          if (this.messageCallbacks.size === 0) {
+            console.log('\n═══════════════════════════════════════════════════════');
+            console.log(`📱 Grupo: ${groupName}`);
+            console.log(`👤 De: ${senderName}`);
+            console.log(`🕐 ${timestamp}`);
+            console.log('───────────────────────────────────────────────────────');
+            console.log(messageContent || '[Mensaje sin texto]');
+            console.log('═══════════════════════════════════════════════════════\n');
+          }
           
           logger.info(
             {
@@ -473,6 +494,20 @@ export class WhatsAppIngestor {
       // Agregar a la lista de callbacks
       this.connectionCallbacks.add(callback);
     }
+  }
+
+  /**
+   * Registrar un callback que se ejecutará cuando se reciba un mensaje del grupo "Pc"
+   */
+  onPcGroupMessage(callback: (message: { group: string; sender: string; timestamp: string; content: string; messageId: string }) => void): void {
+    this.messageCallbacks.add(callback);
+  }
+
+  /**
+   * Remover callback de mensajes
+   */
+  removePcGroupMessageCallback(callback: (message: any) => void): void {
+    this.messageCallbacks.delete(callback);
   }
 
   /**

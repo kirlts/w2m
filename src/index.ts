@@ -35,5 +35,11 @@ setTimeout(() => {
   logger.info('🚀 W2M - WhatsApp to Markdown');
   logger.info({ timestamp: new Date().toISOString() }, '📅 Iniciado');
   logger.info('⚙️ Configuración cargada');
-  logger.info('✅ W2M está corriendo. Usa el CLI para generar el código QR.');
+  
+  // Intentar conectar automáticamente si hay credenciales guardadas
+  ingestor.start().then(() => {
+    logger.info('🔄 Intentando conectar automáticamente...');
+  }).catch((error) => {
+    logger.info('💡 No hay sesión guardada o error al conectar. Usa la opción 1 para generar QR.');
+  });
 }, 100);
