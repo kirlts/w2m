@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  w2m:
+    build:
+      context: .
+      target: production
+    container_name: w2m
+    restart: unless-stopped
+    
+    # Límites de recursos para EC2 Free Tier (1GB RAM)
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    
+    # Variables de entorno
+    env_file:
+      - .env
+    
+    environment:
+      - NODE_OPTIONS=--max-old-space-size=${NODE_MAX_OLD_SPACE:-384}
+      - TZ=UTC
+    
+    # Volúmenes persistentes
+    volumes:
+      # Datos de sesión de WhatsApp (CRÍTICO - no perder)
+      - ./data/session:/app/data/session
+      
+      # Vault con archivos Markdown generados
+      - ./data/vault:/app/data/vault
+      
+      # Logs de la aplicación
+      - ./data/logs:/app/data/logs
+      
+      # Configuración de Git (si usas SSH)
+      - ~/.ssh:/home/node/.ssh:ro
+      - ~/.gitconfig:/home/node/.gitconfig:ro
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Red (opcional, para futura expansión)
+    networks:
+      - w2m-network
+
+networks:
+  w2m-network:
+    driver: bridge
+
