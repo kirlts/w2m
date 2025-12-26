@@ -16,24 +16,32 @@ export class WhatsAppIngestor {
   private config = getConfig();
   private reconnectInterval: NodeJS.Timeout | null = null;
   private isConnecting = false;
+  private connectionState: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
   private currentQR: string | null = null;
-  private qrCallback: ((qr: string) => void) | null = null;
 
   async generateQR(): Promise<void> {
     logger.info('🔄 Generando código QR...');
     
-    if (this.isConnecting || this.socket) {
-      logger.warn('⚠️ Ya hay una conexión en progreso. Desconecta primero.');
+    if (this.connectionState === 'connected') {
+      logger.warn('⚠️ Ya estás conectado a WhatsApp. Desconecta primero si quieres generar un nuevo QR.');
       return;
     }
 
+    // Si hay un socket existente pero no conectado, cerrarlo primero
+    if (this.socket) {
+      logger.info('🔄 Cerrando conexión anterior...');
+      await this.stop();
+    }
+
     this.isConnecting = true;
+    this.connectionState = 'connecting';
 
     try {
-      await this.connect(true); // true = solo generar QR, no reconectar automáticamente
+      await this.connect();
     } catch (error) {
       logger.error({ error }, '❌ Error al generar QR');
       this.isConnecting = false;
+      this.connectionState = 'disconnected';
       throw error;
     }
   }
@@ -41,23 +49,25 @@ export class WhatsAppIngestor {
   async start(): Promise<void> {
     logger.info('🚀 Iniciando WhatsApp Ingestor...');
     
-    if (this.isConnecting) {
-      logger.warn('⚠️ Ya hay una conexión en progreso');
+    if (this.isConnecting || this.connectionState === 'connected') {
+      logger.warn('⚠️ Ya hay una conexión activa o en progreso');
       return;
     }
 
     this.isConnecting = true;
+    this.connectionState = 'connecting';
 
     try {
-      await this.connect(false); // false = conectar normalmente
+      await this.connect();
     } catch (error) {
       logger.error({ error }, '❌ Error al iniciar ingestor');
       this.isConnecting = false;
+      this.connectionState = 'disconnected';
       // No reconectar automáticamente - el usuario debe generar QR manualmente
     }
   }
 
-  private async connect(generateQROnly: boolean = false): Promise<void> {
+  private async connect(): Promise<void> {
     const { state, saveCreds } = await useMultiFileAuthState(
       this.config.WA_SESSION_PATH
     );
@@ -86,6 +96,7 @@ export class WhatsAppIngestor {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
+        this.currentQR = qr;
         // Mostrar QR en consola - usar process.stdout para asegurar que se vea
         process.stdout.write('\n\n');
         process.stdout.write('═══════════════════════════════════════════════════════\n');
@@ -119,6 +130,7 @@ export class WhatsAppIngestor {
 
         this.socket = null;
         this.isConnecting = false;
+        this.connectionState = 'disconnected';
 
         // No reconectar automáticamente - el usuario debe generar QR manualmente
         if (!shouldReconnect) {
@@ -127,10 +139,12 @@ export class WhatsAppIngestor {
       } else if (connection === 'open') {
         logger.info('✅ Conectado a WhatsApp exitosamente!');
         this.isConnecting = false;
+        this.connectionState = 'connected';
         this.clearReconnectInterval();
         this.currentQR = null; // Limpiar QR cuando se conecta
       } else if (connection === 'connecting') {
         logger.info('🔄 Conectando a WhatsApp...');
+        this.connectionState = 'connecting';
       }
     });
 
@@ -175,9 +189,10 @@ export class WhatsAppIngestor {
     }
     
     this.isConnecting = false;
+    this.connectionState = 'disconnected';
   }
 
   isConnected(): boolean {
-    return this.socket !== null;
+    return this.connectionState === 'connected';
   }
 }
