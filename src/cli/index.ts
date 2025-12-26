@@ -63,6 +63,8 @@ export class W2MCLI {
   }
 
   private async generateQR(): Promise<void> {
+    // Limpiar la línea del prompt antes de mostrar el mensaje
+    this.rl.write(null, { ctrl: true, name: 'u' }); // Limpiar línea actual
     console.log('\n🔄 Generando código QR...\n');
     
     if (this.ingestor.isConnected()) {
@@ -72,12 +74,16 @@ export class W2MCLI {
     }
 
     try {
+      // El QR se mostrará directamente desde el ingestor
       await this.ingestor.generateQR();
-      console.log('\n✅ QR generado. Escanea el código con WhatsApp.\n');
-      // Esperar un poco antes de volver al menú
+      
+      // No mostrar mensaje aquí - el QR ya se mostró
+      // El prompt se mostrará después de que el usuario vea el QR
+      // Esperar un poco para que el usuario vea el QR antes de mostrar el prompt
       setTimeout(() => {
+        console.log('\n'); // Línea en blanco después del QR
         this.prompt();
-      }, 2000);
+      }, 3000);
     } catch (error) {
       logger.error({ error }, '❌ Error al generar QR');
       console.log('❌ Error al generar QR. Intenta de nuevo.\n');

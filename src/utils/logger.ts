@@ -4,6 +4,12 @@ import { getConfig } from '../config/index.js';
 
 const config = getConfig();
 
+// Escribir logs a stderr para no interferir con el CLI (que usa stdout)
+const destination = pino.destination({
+  dest: 2, // stderr
+  sync: false,
+});
+
 const loggerOptions: pino.LoggerOptions = {
   level: config.LOG_LEVEL,
 };
@@ -19,5 +25,6 @@ if (config.LOG_FORMAT === 'pretty') {
   };
 }
 
-export const logger = pino(loggerOptions);
+// Crear logger con destino stderr
+export const logger = pino(loggerOptions, destination);
 
