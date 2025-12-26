@@ -22,21 +22,36 @@ export class W2MCLI {
     this.setupMessageHandler();
     this.setupInputHandler();
     
-    // Mostrar menú inicial después de un pequeño delay
-    setTimeout(() => {
-      this.showMenu();
-      this.prompt();
-    }, 300);
+    // Registrar callback para cuando se conecte (mostrar menú por primera vez o actualizar)
+    let menuShown = false;
     
-    // Registrar callback para cuando se conecte (actualizar menú)
     this.ingestor.onConnected(() => {
       setTimeout(() => {
-        // Limpiar y actualizar menú con nuevo estado
-        process.stdout.write('\r' + ' '.repeat(80) + '\r');
-        this.showMenu();
-        this.prompt();
+        if (!menuShown) {
+          // Primera vez - mostrar menú con estado conectado
+          this.showMenu();
+          this.prompt();
+          menuShown = true;
+        } else {
+          // Ya estaba mostrado - solo actualizar
+          process.stdout.write('\r' + ' '.repeat(80) + '\r');
+          this.showMenu();
+          this.prompt();
+        }
       }, 300);
     });
+    
+    // Si ya está conectado al iniciar, mostrar menú inmediatamente
+    setTimeout(() => {
+      if (this.ingestor.isConnected() && !menuShown) {
+        this.showMenu();
+        this.prompt();
+        menuShown = true;
+      } else if (!this.ingestor.isConnected() && !menuShown) {
+        // Si no está conectado, esperar a que se conecte antes de mostrar el menú
+        // El callback onConnected lo manejará
+      }
+    }, 500);
   }
 
   /**
