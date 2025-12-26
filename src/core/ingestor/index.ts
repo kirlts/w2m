@@ -89,7 +89,15 @@ export class WhatsAppIngestor {
     });
 
     // Guardar credenciales cuando cambien
-    this.socket.ev.on('creds.update', saveCreds);
+    this.socket.ev.on('creds.update', async (creds) => {
+      await saveCreds();
+      
+      // Si el pairing se completó exitosamente (tenemos creds.me pero no estamos conectados),
+      // WhatsApp requerirá reiniciar la conexión, pero lo manejamos en connection.update
+      if (creds.me && this.connectionState !== 'connected') {
+        logger.info('✅ Credenciales guardadas. Esperando reinicio de conexión...');
+      }
+    });
 
     // Manejar conexión
     this.socket.ev.on('connection.update', (update) => {
@@ -122,6 +130,41 @@ export class WhatsAppIngestor {
         const shouldReconnect =
           (lastDisconnect?.error as Boom)?.output?.statusCode !==
           DisconnectReason.loggedOut;
+
+        // El código 515 significa "Stream Errored (restart required)"
+        // Esto es normal después de escanear el QR - necesitamos reiniciar
+        const errorData = lastDisconnect?.error as any;
+        const isRestartRequired = 
+          errorData?.output?.statusCode === 515 ||
+          errorData?.data?.attrs?.code === '515' ||
+          errorData?.data?.tag === 'stream:error';
+
+        if (isRestartRequired && shouldReconnect) {
+          logger.info('🔄 Reinicio requerido después del pairing. Reconectando automáticamente...');
+          
+          // Cerrar socket actual
+          this.socket = null;
+          this.isConnecting = false;
+          this.connectionState = 'disconnected';
+          
+          // Esperar un momento para que las credenciales se guarden
+          setTimeout(async () => {
+            if (this.connectionState === 'disconnected' && !this.isConnecting) {
+              logger.info('🔄 Reconectando con credenciales guardadas...');
+              this.isConnecting = true;
+              this.connectionState = 'connecting';
+              try {
+                await this.connect();
+              } catch (error) {
+                logger.error({ error }, '❌ Error al reconectar');
+                this.isConnecting = false;
+                this.connectionState = 'disconnected';
+              }
+            }
+          }, 2000);
+          
+          return;
+        }
 
         logger.warn(
           { shouldReconnect, reason: lastDisconnect?.error },
