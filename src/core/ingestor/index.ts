@@ -49,6 +49,33 @@ export class WhatsAppIngestor {
     }
   }
 
+  /**
+   * Limpiar credenciales inválidas (útil cuando hay error 401)
+   */
+  async clearInvalidSession(): Promise<void> {
+    logger.info('🧹 Limpiando sesión inválida...');
+    await this.stop();
+    
+    // Limpiar archivos de sesión (useMultiFileAuthState los regenerará)
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    
+    try {
+      const sessionPath = this.config.WA_SESSION_PATH;
+      const files = await fs.readdir(sessionPath);
+      
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          await fs.unlink(path.join(sessionPath, file));
+        }
+      }
+      
+      logger.info('✅ Sesión limpiada. Puedes generar un nuevo QR.');
+    } catch (error) {
+      logger.warn({ error }, '⚠️ No se pudieron limpiar algunos archivos de sesión');
+    }
+  }
+
   async start(): Promise<void> {
     logger.info('🚀 Iniciando WhatsApp Ingestor...');
     
@@ -132,17 +159,38 @@ export class WhatsAppIngestor {
       }
 
       if (connection === 'close') {
-        const shouldReconnect =
-          (lastDisconnect?.error as Boom)?.output?.statusCode !==
-          DisconnectReason.loggedOut;
+        const errorCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+        const shouldReconnect = errorCode !== DisconnectReason.loggedOut;
 
         // El código 515 significa "Stream Errored (restart required)"
         // Esto es normal después de escanear el QR - necesitamos reiniciar
         const errorData = lastDisconnect?.error as any;
         const isRestartRequired = 
-          errorData?.output?.statusCode === 515 ||
+          errorCode === 515 ||
           errorData?.data?.attrs?.code === '515' ||
           errorData?.data?.tag === 'stream:error';
+
+        // El código 401 significa "Unauthorized" - credenciales inválidas
+        // Necesitamos limpiar la sesión y generar un nuevo QR
+        const isUnauthorized = errorCode === 401 || errorData?.data?.reason === '401';
+
+        if (isUnauthorized) {
+          logger.warn('⚠️ Credenciales inválidas detectadas (401 Unauthorized)');
+          logger.info('🧹 Limpiando sesión inválida...');
+          
+          // Limpiar socket
+          this.socket = null;
+          this.isConnecting = false;
+          this.connectionState = 'disconnected';
+          
+          // Limpiar credenciales corruptas automáticamente (sin await - se ejecuta en background)
+          this.clearInvalidSession().catch((error) => {
+            logger.warn({ error }, '⚠️ Error al limpiar sesión');
+          });
+          
+          logger.info('💡 Sesión limpiada. Puedes generar un nuevo QR con la opción 1.');
+          return;
+        }
 
         if (isRestartRequired && shouldReconnect) {
           logger.info('🔄 Reinicio requerido después del pairing. Reconectando automáticamente...');
@@ -172,7 +220,7 @@ export class WhatsAppIngestor {
         }
 
         logger.warn(
-          { shouldReconnect, reason: lastDisconnect?.error },
+          { shouldReconnect, reason: lastDisconnect?.error, errorCode },
           '🔌 Conexión cerrada'
         );
 
