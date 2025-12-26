@@ -56,21 +56,25 @@ export class WhatsAppIngestor {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        // Mostrar QR en consola
-        console.log('\n');
-        console.log('═══════════════════════════════════════════════════════');
-        console.log('📱 ESCANEA ESTE CÓDIGO QR CON WHATSAPP:');
-        console.log('═══════════════════════════════════════════════════════');
-        console.log('\n');
-        qrcode.generate(qr, { small: true });
-        console.log('\n');
-        console.log('═══════════════════════════════════════════════════════');
-        console.log('⏱️  Tienes 60 segundos para escanear el QR');
-        console.log('📱 Abre WhatsApp → Configuración → Dispositivos vinculados');
-        console.log('═══════════════════════════════════════════════════════');
-        console.log('\n');
+        // Mostrar QR en consola - usar process.stdout para asegurar que se vea
+        process.stdout.write('\n\n');
+        process.stdout.write('═══════════════════════════════════════════════════════\n');
+        process.stdout.write('📱 ESCANEA ESTE CÓDIGO QR CON WHATSAPP:\n');
+        process.stdout.write('═══════════════════════════════════════════════════════\n');
+        process.stdout.write('\n');
         
-        logger.info('📱 QR code generado y mostrado en consola');
+        // Generar QR directamente en stdout
+        qrcode.generate(qr, { small: true });
+        
+        process.stdout.write('\n');
+        process.stdout.write('═══════════════════════════════════════════════════════\n');
+        process.stdout.write('⏱️  Tienes 60 segundos para escanear el QR\n');
+        process.stdout.write('📱 Abre WhatsApp → Configuración → Dispositivos vinculados\n');
+        process.stdout.write('═══════════════════════════════════════════════════════\n');
+        process.stdout.write('\n\n');
+        
+        // También loguear para que aparezca en los logs estructurados
+        logger.info('📱 QR code generado - Escanea con WhatsApp');
       }
 
       if (connection === 'close') {
