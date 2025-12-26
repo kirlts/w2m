@@ -11,11 +11,6 @@ const config = getConfig();
 // Inicializar ingestor de WhatsApp
 const ingestor = new WhatsAppIngestor();
 
-// Inicializar grupos monitoreados
-ingestor.initialize().catch((error) => {
-  logger.error({ error }, 'Error al inicializar grupos');
-});
-
 // Manejar señales de terminación
 process.on('SIGTERM', async () => {
   logger.info('🛑 Recibida señal SIGTERM, cerrando...');
@@ -30,7 +25,7 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-// Iniciar CLI interactivo PRIMERO (esto mostrará el menú en stdout)
+// Iniciar CLI interactivo PRIMERO (esto mostrará el menú cuando esté listo)
 const cli = new W2MCLI(ingestor);
 cli.start();
 
