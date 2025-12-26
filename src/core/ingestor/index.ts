@@ -1,10 +1,9 @@
 // W2M - WhatsApp Ingestor (Baileys)
-// @ts-ignore - Baileys tiene problemas de tipos con ES modules
-import pkg from '@whiskeysockets/baileys';
-const makeWASocket = pkg.default || pkg;
-import {
+import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
+  fetchLatestBaileysVersion,
+  Browsers,
 } from '@whiskeysockets/baileys';
 import type { WASocket } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
@@ -42,20 +41,27 @@ export class WhatsAppIngestor {
       this.config.WA_SESSION_PATH
     );
 
+    // Obtener la versión más reciente de WhatsApp Web
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    logger.info({ version: version.join('.'), isLatest }, '📱 Versión de WhatsApp Web');
+
     this.socket = makeWASocket({
+      version,
       auth: state,
+      browser: Browsers.ubuntu('W2M'),
       logger: logger.child({ component: 'baileys' }),
       getMessage: async () => undefined, // No cachear mensajes
       syncFullHistory: false,
       markOnlineOnConnect: false,
       connectTimeoutMs: 60000, // 60 segundos para escanear QR
+      generateHighQualityLinkPreview: false, // Reducir carga
     });
 
     // Guardar credenciales cuando cambien
-    this.socket!.ev.on('creds.update', saveCreds);
+    this.socket.ev.on('creds.update', saveCreds);
 
     // Manejar conexión
-    this.socket!.ev.on('connection.update', (update) => {
+    this.socket.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
@@ -108,7 +114,7 @@ export class WhatsAppIngestor {
     });
 
     // Escuchar mensajes
-    this.socket!.ev.on('messages.upsert', async (m) => {
+    this.socket.ev.on('messages.upsert', async (m) => {
       const messages = m.messages;
       
       for (const message of messages) {
@@ -125,8 +131,6 @@ export class WhatsAppIngestor {
         // TODO: Procesar mensaje con Strategy Engine
       }
     });
-
-    // Manejar errores (Baileys no tiene evento 'error' directo, se maneja en connection.update)
   }
 
   private scheduleReconnect(): void {
@@ -169,4 +173,3 @@ export class WhatsAppIngestor {
     return this.socket !== null;
   }
 }
-
