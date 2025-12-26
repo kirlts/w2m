@@ -33,7 +33,7 @@ const configSchema = z.object({
   
   // Logging
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
-  LOG_FORMAT: z.enum(['json', 'pretty']).default('json'),
+  LOG_FORMAT: z.enum(['json', 'pretty']).default('pretty'), // pretty por defecto para ver QR mejor
   
   // Memory
   NODE_MAX_OLD_SPACE: z.coerce.number().default(1024),

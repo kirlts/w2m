@@ -1,9 +1,12 @@
 // W2M - WhatsApp Ingestor (Baileys)
-import makeWASocket, {
+// @ts-ignore - Baileys tiene problemas de tipos con ES modules
+import pkg from '@whiskeysockets/baileys';
+const makeWASocket = pkg.default || pkg;
+import {
   DisconnectReason,
   useMultiFileAuthState,
-  type WASocket,
 } from '@whiskeysockets/baileys';
+import type { WASocket } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import { getConfig } from '../../config/index.js';
 import { logger } from '../../utils/logger.js';
@@ -49,10 +52,10 @@ export class WhatsAppIngestor {
     });
 
     // Guardar credenciales cuando cambien
-    this.socket.ev.on('creds.update', saveCreds);
+    this.socket!.ev.on('creds.update', saveCreds);
 
     // Manejar conexión
-    this.socket.ev.on('connection.update', (update) => {
+    this.socket!.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
@@ -105,7 +108,7 @@ export class WhatsAppIngestor {
     });
 
     // Escuchar mensajes
-    this.socket.ev.on('messages.upsert', async (m) => {
+    this.socket!.ev.on('messages.upsert', async (m) => {
       const messages = m.messages;
       
       for (const message of messages) {
