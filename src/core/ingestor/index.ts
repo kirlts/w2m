@@ -260,15 +260,46 @@ export class WhatsAppIngestor {
     this.socket.ev.on('messages.upsert', async (m) => {
       const messages = m.messages;
       
+      // DEBUG: Loggear todos los eventos de mensajes
+      logger.info(
+        {
+          messageCount: messages.length,
+          type: m.type,
+          isInitialSync: this.isInitialSync,
+        },
+        '🔔 Evento messages.upsert recibido'
+      );
+      
       for (const message of messages) {
+        const remoteJid = message.key.remoteJid;
+        const messageId = message.key.id;
+        const fromMe = message.key.fromMe;
+        const messageTimestamp = message.messageTimestamp;
+        
+        // DEBUG: Loggear TODOS los mensajes que llegan
+        logger.info(
+          {
+            remoteJid,
+            messageId,
+            fromMe,
+            type: m.type,
+            timestamp: messageTimestamp,
+            isInitialSync: this.isInitialSync,
+            hasMessage: !!message.message,
+          },
+          '📨 Mensaje recibido (antes de filtrar)'
+        );
+        
         // Ignorar mensajes propios
-        if (message.key.fromMe) continue;
+        if (fromMe) {
+          logger.debug({ remoteJid, messageId }, '⏭️ Mensaje propio (ignorado)');
+          continue;
+        }
         
         // Filtrar mensajes del historial:
         // - Mensajes recibidos durante la sincronización inicial (primeros 5 segundos)
         // - Mensajes sin timestamp o con timestamp muy antiguo (más de 2 minutos)
         // NOTA: No filtramos por m.type === 'notify' porque los mensajes nuevos también pueden venir así
-        const messageTimestamp = message.messageTimestamp;
         const now = Date.now() / 1000;
         const isHistoryMessage = 
           this.isInitialSync ||
@@ -276,50 +307,66 @@ export class WhatsAppIngestor {
           (typeof messageTimestamp === 'number' && (now - messageTimestamp) > 120); // Más de 2 minutos = historial
         
         if (isHistoryMessage) {
-          // Solo loguear en debug, no en info
-          logger.debug(
+          logger.info(
             {
-              from: message.key.remoteJid,
-              messageId: message.key.id,
+              remoteJid,
+              messageId,
               type: m.type,
               timestamp: messageTimestamp,
               isInitialSync: this.isInitialSync,
+              timeDiff: messageTimestamp ? (now - (messageTimestamp as number)) : null,
             },
             '📜 Mensaje del historial (ignorado)'
           );
           continue;
         }
         
-        // Log para debug - ver todos los mensajes nuevos
-        logger.debug(
+        logger.info(
           {
-            from: message.key.remoteJid,
-            messageId: message.key.id,
+            remoteJid,
+            messageId,
             type: m.type,
             timestamp: messageTimestamp,
           },
-          '📨 Mensaje nuevo detectado (procesando...)'
+          '✅ Mensaje nuevo detectado (procesando...)'
         );
         
         // Este es un mensaje nuevo - procesarlo
-        const remoteJid = message.key.remoteJid;
-        
         // Solo procesar mensajes de grupos (terminan en @g.us)
         if (!remoteJid || !remoteJid.endsWith('@g.us')) {
+          logger.debug({ remoteJid }, '⏭️ No es un grupo (ignorado)');
           continue;
         }
+        
+        logger.info({ remoteJid }, '✅ Es un grupo, obteniendo metadata...');
 
         // Obtener metadata del grupo para verificar el nombre
         try {
           if (!this.socket) continue;
           
+          logger.info({ remoteJid }, '🔍 Obteniendo metadata del grupo...');
           const groupMetadata = await this.socket.groupMetadata(remoteJid);
           const groupName = groupMetadata.subject || 'Sin nombre';
           
+          logger.info(
+            {
+              remoteJid,
+              groupName,
+              groupNameLower: groupName.toLowerCase(),
+            },
+            '📋 Metadata del grupo obtenida'
+          );
+          
           // Filtrar solo el grupo "Pc" (case-insensitive)
           if (groupName.toLowerCase() !== 'pc') {
+            logger.debug(
+              { groupName, expected: 'pc' },
+              '⏭️ No es el grupo "Pc" (ignorado)'
+            );
             continue;
           }
+          
+          logger.info({ groupName }, '✅ Es el grupo "Pc"! Procesando mensaje...');
 
           // Extraer contenido del mensaje
           const messageContent = this.extractMessageContent(message);
@@ -339,17 +386,31 @@ export class WhatsAppIngestor {
             messageId: message.key.id,
           };
           
-          // Notificar a los callbacks de mensajes (CLI puede mostrar inmediatamente)
-          this.messageCallbacks.forEach(callback => {
-            try {
-              callback(messageData);
-            } catch (error) {
-              logger.warn({ error }, '⚠️ Error en callback de mensaje');
-            }
-          });
+          logger.info(
+            {
+              group: groupName,
+              sender: senderName,
+              content: messageContent,
+              callbackCount: this.messageCallbacks.size,
+            },
+            '📤 Preparando para mostrar mensaje'
+          );
           
-          // También imprimir directamente si no hay callbacks registrados
-          if (this.messageCallbacks.size === 0) {
+          // Notificar a los callbacks de mensajes (CLI puede mostrar inmediatamente)
+          if (this.messageCallbacks.size > 0) {
+            logger.info({ callbackCount: this.messageCallbacks.size }, '📞 Llamando callbacks de mensajes...');
+            this.messageCallbacks.forEach((callback, index) => {
+              try {
+                logger.debug({ callbackIndex: index }, '📞 Ejecutando callback...');
+                callback(messageData);
+                logger.debug({ callbackIndex: index }, '✅ Callback ejecutado');
+              } catch (error) {
+                logger.error({ error, callbackIndex: index }, '❌ Error en callback de mensaje');
+              }
+            });
+            logger.info('✅ Todos los callbacks ejecutados');
+          } else {
+            logger.warn('⚠️ No hay callbacks registrados, imprimiendo directamente');
             console.log('\n═══════════════════════════════════════════════════════');
             console.log(`📱 Grupo: ${groupName}`);
             console.log(`👤 De: ${senderName}`);

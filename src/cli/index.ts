@@ -36,33 +36,54 @@ export class W2MCLI {
    * Configurar handler para mostrar mensajes del grupo "Pc" inmediatamente
    */
   private setupMessageHandler(): void {
+    logger.info('🔧 Configurando handler de mensajes del grupo "Pc"');
     this.ingestor.onPcGroupMessage((message) => {
+      logger.info({ message }, '📨 Callback de mensaje recibido en CLI');
       this.displayMessageImmediately(message);
     });
+    logger.info('✅ Handler de mensajes configurado');
   }
 
   /**
    * Mostrar mensaje inmediatamente, pausando el readline si es necesario
    */
   private displayMessageImmediately(message: { group: string; sender: string; timestamp: string; content: string }): void {
-    // Pausar readline para poder imprimir sin interferir con el prompt
-    this.rl.pause();
+    logger.info({ message }, '🖥️ Mostrando mensaje en consola');
     
-    // Limpiar la línea actual del prompt
-    process.stdout.write('\r' + ' '.repeat(80) + '\r');
-    
-    // Imprimir el mensaje
-    console.log('\n═══════════════════════════════════════════════════════');
-    console.log(`📱 Grupo: ${message.group}`);
-    console.log(`👤 De: ${message.sender}`);
-    console.log(`🕐 ${message.timestamp}`);
-    console.log('───────────────────────────────────────────────────────');
-    console.log(message.content);
-    console.log('═══════════════════════════════════════════════════════\n');
-    
-    // Reanudar readline y mostrar el prompt de nuevo
-    this.rl.resume();
-    this.prompt();
+    try {
+      // Pausar readline para poder imprimir sin interferir con el prompt
+      this.rl.pause();
+      logger.debug('⏸️ Readline pausado');
+      
+      // Limpiar la línea actual del prompt
+      process.stdout.write('\r' + ' '.repeat(80) + '\r');
+      
+      // Imprimir el mensaje
+      console.log('\n═══════════════════════════════════════════════════════');
+      console.log(`📱 Grupo: ${message.group}`);
+      console.log(`👤 De: ${message.sender}`);
+      console.log(`🕐 ${message.timestamp}`);
+      console.log('───────────────────────────────────────────────────────');
+      console.log(message.content);
+      console.log('═══════════════════════════════════════════════════════\n');
+      
+      logger.debug('✅ Mensaje impreso en consola');
+      
+      // Reanudar readline y mostrar el prompt de nuevo
+      this.rl.resume();
+      logger.debug('▶️ Readline reanudado');
+      this.prompt();
+      logger.debug('✅ Prompt restaurado');
+    } catch (error) {
+      logger.error({ error }, '❌ Error al mostrar mensaje');
+      // Intentar restaurar el prompt de todas formas
+      try {
+        this.rl.resume();
+        this.prompt();
+      } catch (e) {
+        logger.error({ error: e }, '❌ Error crítico al restaurar prompt');
+      }
+    }
   }
 
   private showMenu(): void {
