@@ -14,10 +14,13 @@ import qrcode from 'qrcode-terminal';
 export class WhatsAppIngestor {
   private socket: WASocket | null = null;
   private config = getConfig();
-  private reconnectInterval: NodeJS.Timeout | null = null;
+  // reconnectInterval removido - no reconectamos automáticamente
   private isConnecting = false;
   private connectionState: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
   private currentQR: string | null = null;
+  private connectionCallbacks: Set<() => void> = new Set();
+  private isInitialSync = true;
+  private initialSyncTimeout: NodeJS.Timeout | null = null;
 
   async generateQR(): Promise<void> {
     logger.info('🔄 Generando código QR...');
@@ -80,7 +83,8 @@ export class WhatsAppIngestor {
       version,
       auth: state,
       browser: Browsers.ubuntu('W2M'),
-      logger: logger.child({ component: 'baileys' }),
+      // Reducir verbosidad de logs de Baileys - solo errores y warnings
+      logger: logger.child({ component: 'baileys' }, { level: 'warn' }),
       getMessage: async () => undefined, // No cachear mensajes
       syncFullHistory: false,
       markOnlineOnConnect: false,
@@ -184,27 +188,63 @@ export class WhatsAppIngestor {
         logger.info('✅ Conectado a WhatsApp exitosamente!');
         this.isConnecting = false;
         this.connectionState = 'connected';
-        this.clearReconnectInterval();
         this.currentQR = null; // Limpiar QR cuando se conecta
+        
+        // Marcar sincronización inicial - esperar 5 segundos para que termine
+        this.isInitialSync = true;
+        if (this.initialSyncTimeout) clearTimeout(this.initialSyncTimeout);
+        this.initialSyncTimeout = setTimeout(() => {
+          this.isInitialSync = false;
+          this.initialSyncTimeout = null;
+        }, 5000);
+        
+        // Notificar a los callbacks de conexión
+        this.connectionCallbacks.forEach(callback => callback());
+        this.connectionCallbacks.clear();
       } else if (connection === 'connecting') {
         logger.info('🔄 Conectando a WhatsApp...');
         this.connectionState = 'connecting';
       }
     });
 
-    // Escuchar mensajes
     this.socket.ev.on('messages.upsert', async (m) => {
       const messages = m.messages;
       
       for (const message of messages) {
-        if (message.key.fromMe) continue; // Ignorar mensajes propios por ahora
+        // Ignorar mensajes propios
+        if (message.key.fromMe) continue;
         
+        // Filtrar mensajes del historial:
+        // - Mensajes con type === 'notify' son del historial
+        // - Mensajes recibidos durante la sincronización inicial
+        // - Mensajes sin timestamp o con timestamp muy antiguo
+        const messageTimestamp = message.messageTimestamp;
+        const isHistoryMessage = 
+          m.type === 'notify' ||
+          this.isInitialSync ||
+          !messageTimestamp ||
+          (typeof messageTimestamp === 'number' && (Date.now() / 1000 - messageTimestamp) > 300); // Más de 5 minutos = historial
+        
+        if (isHistoryMessage) {
+          // Solo loguear en debug, no en info
+          logger.debug(
+            {
+              from: message.key.remoteJid,
+              messageId: message.key.id,
+              type: m.type,
+            },
+            '📜 Mensaje del historial (ignorado)'
+          );
+          continue;
+        }
+        
+        // Este es un mensaje nuevo - procesarlo
         logger.info(
           {
             from: message.key.remoteJid,
             messageId: message.key.id,
           },
-          '📨 Mensaje recibido'
+          '📨 Mensaje nuevo recibido'
         );
         
         // TODO: Procesar mensaje con Strategy Engine
@@ -212,20 +252,14 @@ export class WhatsAppIngestor {
     });
   }
 
-  // Método removido - no reconectamos automáticamente
-  // El usuario debe generar QR manualmente a través del CLI
-
-  private clearReconnectInterval(): void {
-    if (this.reconnectInterval) {
-      clearTimeout(this.reconnectInterval);
-      this.reconnectInterval = null;
-    }
-  }
-
   async stop(): Promise<void> {
     logger.info('🛑 Deteniendo WhatsApp Ingestor...');
     
-    this.clearReconnectInterval();
+    // Limpiar timeouts
+    if (this.initialSyncTimeout) {
+      clearTimeout(this.initialSyncTimeout);
+      this.initialSyncTimeout = null;
+    }
     
     if (this.socket) {
       this.socket.end(undefined);
@@ -234,9 +268,24 @@ export class WhatsAppIngestor {
     
     this.isConnecting = false;
     this.connectionState = 'disconnected';
+    this.isInitialSync = true; // Reset para próxima conexión
+    this.connectionCallbacks.clear();
   }
 
   isConnected(): boolean {
     return this.connectionState === 'connected';
+  }
+
+  /**
+   * Registrar un callback que se ejecutará cuando la conexión se establezca
+   */
+  onConnected(callback: () => void): void {
+    if (this.connectionState === 'connected') {
+      // Ya está conectado, ejecutar inmediatamente
+      callback();
+    } else {
+      // Agregar a la lista de callbacks
+      this.connectionCallbacks.add(callback);
+    }
   }
 }

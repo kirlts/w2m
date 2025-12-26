@@ -77,7 +77,7 @@ export class W2MCLI {
 
   private async generateQR(): Promise<void> {
     // Limpiar la línea del prompt (mover cursor al inicio y limpiar)
-    process.stdout.write('\r' + ' '.repeat(80) + '\r'); // Limpiar línea
+    process.stdout.write('\r' + ' '.repeat(80) + '\r');
     console.log('\n🔄 Generando código QR...\n');
     
     if (this.ingestor.isConnected()) {
@@ -90,29 +90,24 @@ export class W2MCLI {
       // El QR se mostrará directamente desde el ingestor
       await this.ingestor.generateQR();
       
-      // NO mostrar el prompt automáticamente
-      // El prompt se mostrará cuando:
-      // 1. La conexión se establezca exitosamente (manejado en connection.update)
-      // 2. El usuario presione Enter o escriba algo (manejado por readline)
-      // 3. O después de 60 segundos si el QR expira
-      
-      // Configurar un listener para cuando se conecte
-      const checkConnection = setInterval(() => {
-        if (this.ingestor.isConnected()) {
-          clearInterval(checkConnection);
-          console.log('\n✅ Conectado exitosamente!\n');
-          this.prompt();
-        }
-      }, 1000);
-      
-      // Limpiar el intervalo después de 70 segundos (60s para QR + 10s de margen)
-      setTimeout(() => {
-        clearInterval(checkConnection);
+      // Usar evento de conexión en lugar de polling
+      let qrExpired = false;
+      const qrTimeout = setTimeout(() => {
+        qrExpired = true;
         if (!this.ingestor.isConnected()) {
           console.log('\n⏱️  El QR expiró. Puedes generar uno nuevo con la opción 1.\n');
           this.prompt();
         }
-      }, 70000);
+      }, 70000); // 70 segundos (60s QR + 10s margen)
+      
+      // Registrar callback para cuando se conecte
+      this.ingestor.onConnected(() => {
+        if (!qrExpired) {
+          clearTimeout(qrTimeout);
+          console.log('\n✅ Conectado exitosamente!\n');
+          this.prompt();
+        }
+      });
       
     } catch (error) {
       logger.error({ error }, '❌ Error al generar QR');
