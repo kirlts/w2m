@@ -1,29 +1,36 @@
 // W2M - WhatsApp to Markdown
 // Entry point de la aplicación
 
-console.log('🚀 W2M - WhatsApp to Markdown');
-console.log('📅 Iniciado:', new Date().toISOString());
-console.log('⏳ Esperando implementación del código base...');
+import { WhatsAppIngestor } from './core/ingestor/index.js';
+import { logger } from './utils/logger.js';
+import { getConfig } from './config/index.js';
 
-// Mantener el proceso corriendo
-// TODO: Implementar ingestor de WhatsApp, estrategias, etc.
-process.on('SIGTERM', () => {
-  console.log('🛑 Recibida señal SIGTERM, cerrando...');
+const config = getConfig();
+
+logger.info('🚀 W2M - WhatsApp to Markdown');
+logger.info({ timestamp: new Date().toISOString() }, '📅 Iniciado');
+logger.info('⚙️ Configuración cargada');
+
+// Inicializar ingestor de WhatsApp
+const ingestor = new WhatsAppIngestor();
+
+// Manejar señales de terminación
+process.on('SIGTERM', async () => {
+  logger.info('🛑 Recibida señal SIGTERM, cerrando...');
+  await ingestor.stop();
   process.exit(0);
 });
 
-process.on('SIGINT', () => {
-  console.log('🛑 Recibida señal SIGINT, cerrando...');
+process.on('SIGINT', async () => {
+  logger.info('🛑 Recibida señal SIGINT, cerrando...');
+  await ingestor.stop();
   process.exit(0);
 });
 
-// Mantener el proceso vivo
-setInterval(() => {
-  // Heartbeat cada 30 segundos
-  console.log('💓 Heartbeat:', new Date().toISOString());
-}, 30000);
+// Iniciar ingestor
+ingestor.start().catch((error) => {
+  logger.error({ error }, '❌ Error fatal al iniciar ingestor');
+  process.exit(1);
+});
 
-// Prevenir que el proceso termine
-process.stdin.resume();
-
-console.log('✅ W2M está corriendo. Esperando implementación...');
+logger.info('✅ W2M está corriendo. Esperando conexión a WhatsApp...');
