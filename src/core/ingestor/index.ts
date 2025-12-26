@@ -4,6 +4,7 @@ import makeWASocket, {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   Browsers,
+  proto,
 } from '@whiskeysockets/baileys';
 import type { WASocket } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
@@ -287,17 +288,141 @@ export class WhatsAppIngestor {
         }
         
         // Este es un mensaje nuevo - procesarlo
-        logger.info(
-          {
-            from: message.key.remoteJid,
-            messageId: message.key.id,
-          },
-          '📨 Mensaje nuevo recibido'
-        );
+        const remoteJid = message.key.remoteJid;
         
-        // TODO: Procesar mensaje con Strategy Engine
+        // Solo procesar mensajes de grupos (terminan en @g.us)
+        if (!remoteJid || !remoteJid.endsWith('@g.us')) {
+          continue;
+        }
+
+        // Obtener metadata del grupo para verificar el nombre
+        try {
+          if (!this.socket) continue;
+          
+          const groupMetadata = await this.socket.groupMetadata(remoteJid);
+          const groupName = groupMetadata.subject || 'Sin nombre';
+          
+          // Filtrar solo el grupo "Pc" (case-insensitive)
+          if (groupName.toLowerCase() !== 'pc') {
+            continue;
+          }
+
+          // Extraer contenido del mensaje
+          const messageContent = this.extractMessageContent(message);
+          const senderJid = message.key.participant || remoteJid;
+          const senderName = this.getSenderName(message, groupMetadata, senderJid);
+          
+          // Imprimir mensaje en consola
+          const timestamp = message.messageTimestamp 
+            ? new Date((message.messageTimestamp as number) * 1000).toLocaleString('es-ES')
+            : new Date().toLocaleString('es-ES');
+          
+          console.log('\n═══════════════════════════════════════════════════════');
+          console.log(`📱 Grupo: ${groupName}`);
+          console.log(`👤 De: ${senderName}`);
+          console.log(`🕐 ${timestamp}`);
+          console.log('───────────────────────────────────────────────────────');
+          console.log(messageContent || '[Mensaje sin texto]');
+          console.log('═══════════════════════════════════════════════════════\n');
+          
+          logger.info(
+            {
+              group: groupName,
+              sender: senderName,
+              messageId: message.key.id,
+            },
+            '📨 Mensaje capturado del grupo "Pc"'
+          );
+        } catch (error) {
+          logger.warn({ error, remoteJid }, '⚠️ Error al procesar mensaje del grupo');
+        }
       }
     });
+  }
+
+  /**
+   * Extraer contenido de texto de un mensaje de Baileys
+   */
+  private extractMessageContent(message: proto.IWebMessageInfo): string {
+    const msg = message.message;
+    if (!msg) return '';
+
+    // Mensaje de texto simple
+    if (msg.conversation) {
+      return msg.conversation;
+    }
+
+    // Mensaje de texto extendido
+    if (msg.extendedTextMessage?.text) {
+      return msg.extendedTextMessage.text;
+    }
+
+    // Mensaje con imagen
+    if (msg.imageMessage?.caption) {
+      return `[Imagen] ${msg.imageMessage.caption}`;
+    }
+
+    // Mensaje con video
+    if (msg.videoMessage?.caption) {
+      return `[Video] ${msg.videoMessage.caption}`;
+    }
+
+    // Mensaje con audio
+    if (msg.audioMessage) {
+      return '[Audio]';
+    }
+
+    // Mensaje con documento
+    if (msg.documentMessage) {
+      const docName = msg.documentMessage.fileName || 'Documento sin nombre';
+      return `[Documento] ${docName}`;
+    }
+
+    // Mensaje con sticker
+    if (msg.stickerMessage) {
+      return '[Sticker]';
+    }
+
+    // Mensaje con ubicación
+    if (msg.locationMessage) {
+      return '[Ubicación]';
+    }
+
+    // Mensaje con contacto
+    if (msg.contactMessage) {
+      return '[Contacto]';
+    }
+
+    // Otros tipos de mensaje
+    return '[Mensaje no soportado]';
+  }
+
+  /**
+   * Obtener el nombre del remitente
+   */
+  private getSenderName(
+    message: proto.IWebMessageInfo,
+    groupMetadata: any,
+    senderJid: string
+  ): string {
+    // Intentar obtener el pushName del mensaje
+    const pushName = message.pushName;
+    if (pushName) {
+      return pushName;
+    }
+
+    // Si es un grupo, buscar en los participantes
+    if (groupMetadata?.participants) {
+      const participant = groupMetadata.participants.find(
+        (p: any) => p.id === senderJid
+      );
+      if (participant?.name) {
+        return participant.name;
+      }
+    }
+
+    // Fallback: usar el JID sin el @s.whatsapp.net
+    return senderJid?.split('@')[0] || 'Desconocido';
   }
 
   async stop(): Promise<void> {
