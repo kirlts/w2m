@@ -290,10 +290,10 @@ export class WhatsAppIngestor {
           '📨 Mensaje recibido (antes de filtrar)'
         );
         
-        // Ignorar mensajes propios
+        // NO ignorar mensajes propios - queremos capturar TODOS los mensajes del grupo "Pc"
+        // Incluyendo los que enviamos nosotros mismos
         if (fromMe) {
-          logger.debug({ remoteJid, messageId }, '⏭️ Mensaje propio (ignorado)');
-          continue;
+          logger.debug({ remoteJid, messageId }, '📤 Mensaje propio (procesando también)');
         }
         
         // Filtrar mensajes del historial:
@@ -370,8 +370,24 @@ export class WhatsAppIngestor {
 
           // Extraer contenido del mensaje
           const messageContent = this.extractMessageContent(message);
-          const senderJid = message.key.participant || remoteJid;
-          const senderName = this.getSenderName(message, groupMetadata, senderJid);
+          
+          // Para mensajes propios, usar nuestro propio JID
+          const senderJid = message.key.fromMe 
+            ? (this.socket?.user?.id || remoteJid)
+            : (message.key.participant || remoteJid);
+          const senderName = message.key.fromMe 
+            ? 'Yo' 
+            : this.getSenderName(message, groupMetadata, senderJid);
+          
+          logger.info(
+            {
+              fromMe: message.key.fromMe,
+              senderJid,
+              senderName,
+              messageContent,
+            },
+            '👤 Información del remitente'
+          );
           
           // Preparar datos del mensaje
           const timestamp = message.messageTimestamp 
@@ -440,15 +456,34 @@ export class WhatsAppIngestor {
    */
   private extractMessageContent(message: proto.IWebMessageInfo): string {
     const msg = message.message;
-    if (!msg) return '';
+    if (!msg) {
+      logger.debug({ messageId: message.key.id }, '⚠️ Mensaje sin contenido (message.message es null)');
+      return '';
+    }
+
+    logger.debug(
+      {
+        messageId: message.key.id,
+        hasConversation: !!msg.conversation,
+        hasExtendedText: !!msg.extendedTextMessage,
+        hasImage: !!msg.imageMessage,
+        hasVideo: !!msg.videoMessage,
+        hasAudio: !!msg.audioMessage,
+        hasDocument: !!msg.documentMessage,
+        hasSticker: !!msg.stickerMessage,
+      },
+      '🔍 Analizando tipo de mensaje'
+    );
 
     // Mensaje de texto simple
     if (msg.conversation) {
+      logger.debug({ content: msg.conversation }, '✅ Mensaje de texto simple');
       return msg.conversation;
     }
 
     // Mensaje de texto extendido
     if (msg.extendedTextMessage?.text) {
+      logger.debug({ content: msg.extendedTextMessage.text }, '✅ Mensaje de texto extendido');
       return msg.extendedTextMessage.text;
     }
 
@@ -489,6 +524,13 @@ export class WhatsAppIngestor {
     }
 
     // Otros tipos de mensaje
+    logger.warn(
+      {
+        messageId: message.key.id,
+        messageKeys: Object.keys(msg),
+      },
+      '⚠️ Tipo de mensaje no reconocido'
+    );
     return '[Mensaje no soportado]';
   }
 

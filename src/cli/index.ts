@@ -19,17 +19,27 @@ export class W2MCLI {
   }
 
   start(): void {
-    this.showMenu();
-    this.setupInputHandler();
     this.setupMessageHandler();
+    this.setupInputHandler();
     
-    // Registrar callback para cuando se conecte (mostrar menú)
-    this.ingestor.onConnected(() => {
-      // Pequeño delay para que los logs no interfieran
+    // Verificar si ya está conectado al iniciar
+    if (this.ingestor.isConnected()) {
+      // Ya está conectado, mostrar menú con estado correcto
       setTimeout(() => {
         this.showMenu();
-      }, 500);
-    });
+      }, 100);
+    } else {
+      // No está conectado, mostrar menú y esperar conexión
+      this.showMenu();
+      
+      // Registrar callback para cuando se conecte (mostrar menú)
+      this.ingestor.onConnected(() => {
+        // Pequeño delay para que los logs no interfieran
+        setTimeout(() => {
+          this.showMenu();
+        }, 500);
+      });
+    }
   }
 
   /**
