@@ -22,24 +22,24 @@ export class W2MCLI {
     this.setupMessageHandler();
     this.setupInputHandler();
     
-    // Verificar si ya está conectado al iniciar
-    if (this.ingestor.isConnected()) {
-      // Ya está conectado, mostrar menú con estado correcto
+    // Mostrar menú inicial
+    this.showMenu();
+    
+    // Verificar estado y mostrar prompt con estado correcto
+    // Usar un pequeño delay para asegurar que el ingestor esté inicializado
+    setTimeout(() => {
+      this.prompt();
+    }, 200);
+    
+    // Registrar callback para cuando se conecte (actualizar prompt)
+    this.ingestor.onConnected(() => {
+      // Pequeño delay para que los logs no interfieran
       setTimeout(() => {
-        this.showMenu();
-      }, 100);
-    } else {
-      // No está conectado, mostrar menú y esperar conexión
-      this.showMenu();
-      
-      // Registrar callback para cuando se conecte (mostrar menú)
-      this.ingestor.onConnected(() => {
-        // Pequeño delay para que los logs no interfieran
-        setTimeout(() => {
-          this.showMenu();
-        }, 500);
-      });
-    }
+        // Limpiar línea actual y mostrar prompt con nuevo estado
+        process.stdout.write('\r' + ' '.repeat(80) + '\r');
+        this.prompt();
+      }, 500);
+    });
   }
 
   /**
@@ -109,7 +109,7 @@ export class W2MCLI {
     console.log('  4 - Revisar grupo "Pc"');
     console.log('  5 - Salir');
     console.log('');
-    this.prompt();
+    // No llamar prompt() aquí - se llamará después con el estado correcto
   }
 
   private prompt(): void {

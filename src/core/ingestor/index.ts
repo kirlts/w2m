@@ -456,14 +456,15 @@ export class WhatsAppIngestor {
    */
   private extractMessageContent(message: proto.IWebMessageInfo): string {
     const msg = message.message;
+    const messageId = message.key?.id || 'unknown';
     if (!msg) {
-      logger.debug({ messageId: message.key.id }, '⚠️ Mensaje sin contenido (message.message es null)');
+      logger.debug({ messageId }, '⚠️ Mensaje sin contenido (message.message es null)');
       return '';
     }
 
     logger.debug(
       {
-        messageId: message.key.id,
+        messageId,
         hasConversation: !!msg.conversation,
         hasExtendedText: !!msg.extendedTextMessage,
         hasImage: !!msg.imageMessage,
@@ -526,7 +527,7 @@ export class WhatsAppIngestor {
     // Otros tipos de mensaje
     logger.warn(
       {
-        messageId: message.key.id,
+        messageId,
         messageKeys: Object.keys(msg),
       },
       '⚠️ Tipo de mensaje no reconocido'
