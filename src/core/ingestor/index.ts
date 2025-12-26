@@ -41,11 +41,11 @@ export class WhatsAppIngestor {
 
     this.socket = makeWASocket({
       auth: state,
-      printQRInTerminal: true,
       logger: logger.child({ component: 'baileys' }),
       getMessage: async () => undefined, // No cachear mensajes
       syncFullHistory: false,
       markOnlineOnConnect: false,
+      connectTimeoutMs: 60000, // 60 segundos para escanear QR
     });
 
     // Guardar credenciales cuando cambien
@@ -56,12 +56,21 @@ export class WhatsAppIngestor {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        logger.info('📱 Escanea este código QR con WhatsApp:');
-        logger.info('');
         // Mostrar QR en consola
+        console.log('\n');
+        console.log('═══════════════════════════════════════════════════════');
+        console.log('📱 ESCANEA ESTE CÓDIGO QR CON WHATSAPP:');
+        console.log('═══════════════════════════════════════════════════════');
+        console.log('\n');
         qrcode.generate(qr, { small: true });
-        logger.info('');
-        logger.info('⏱️ Tienes 60 segundos para escanear el QR');
+        console.log('\n');
+        console.log('═══════════════════════════════════════════════════════');
+        console.log('⏱️  Tienes 60 segundos para escanear el QR');
+        console.log('📱 Abre WhatsApp → Configuración → Dispositivos vinculados');
+        console.log('═══════════════════════════════════════════════════════');
+        console.log('\n');
+        
+        logger.info('📱 QR code generado y mostrado en consola');
       }
 
       if (connection === 'close') {
