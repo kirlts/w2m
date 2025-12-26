@@ -24,9 +24,11 @@ WORKDIR /app
 # Dependencias del sistema
 # - git: para sincronización con repositorios
 # - tini: init system para manejo correcto de señales
+# - su-exec: para cambiar de usuario de forma segura
 RUN apk add --no-cache \
     git \
     tini \
+    su-exec \
     && rm -rf /var/cache/apk/*
 
 # Configurar git global
@@ -107,8 +109,9 @@ COPY --from=builder --chown=w2m:w2m /app/package.json ./
 RUN mkdir -p /app/data/session /app/data/vault /app/data/logs && \
     chown -R w2m:w2m /app/data
 
-# Cambiar a usuario no-root
-USER w2m
+# Copiar script de entrada
+COPY scripts/entrypoint.sh /app/scripts/entrypoint.sh
+RUN chmod +x /app/scripts/entrypoint.sh
 
 # Variables de entorno de producción
 ENV NODE_ENV=production
@@ -119,9 +122,11 @@ ENV LOG_FORMAT=json
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=40s \
     CMD node -e "process.exit(0)"
 
+# NO cambiar a usuario aquí - el entrypoint.sh lo hará
+# Mantener como root para que pueda ajustar permisos
+
 # Usar tini como init para manejo correcto de señales
 ENTRYPOINT ["/sbin/tini", "--"]
 
-# Comando de inicio con límite de memoria optimizado para t3.small
-# --max-old-space-size=1024 deja ~500MB para el sistema
-CMD ["node", "--max-old-space-size=1024", "dist/index.js"]
+# Script de entrada que ajusta permisos y cambia al usuario w2m
+CMD ["/app/scripts/entrypoint.sh"]
