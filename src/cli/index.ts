@@ -85,17 +85,12 @@ export class W2MCLI {
   }
 
   private prompt(): void {
-    const status = this.ingestor.isConnected() ? '✅ Conectado' : '❌ Desconectado';
-    
-    // Usar question con mejor manejo del input
-    this.rl.question(`[${status}] Selecciona una opción (1-5): `, (answer) => {
+    this.rl.question('> ', (answer) => {
       const trimmed = answer.trim();
       if (trimmed) {
-        // Limpiar la línea después de recibir la respuesta
         process.stdout.write('\r' + ' '.repeat(80) + '\r');
         this.handleInput(trimmed);
       } else {
-        // Si no hay input, volver a preguntar
         this.prompt();
       }
     });
