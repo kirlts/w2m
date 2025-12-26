@@ -51,7 +51,7 @@ export class W2MCLI {
   /**
    * Mostrar mensaje inmediatamente, pausando el readline si es necesario
    */
-  private displayMessageImmediately(message: { group: string; sender: string; timestamp: string; content: string }): void {
+  private displayMessageImmediately(message: { sender: string; time: string; content: string }): void {
     try {
       // Pausar readline para poder imprimir sin interferir con el prompt
       this.rl.pause();
@@ -59,8 +59,10 @@ export class W2MCLI {
       // Limpiar la línea actual del prompt
       process.stdout.write('\r' + ' '.repeat(80) + '\r');
       
-      // Imprimir el mensaje de forma compacta
-      console.log(`\n💬 [${message.group}] ${message.sender}: ${message.content}\n`);
+      // Imprimir el mensaje en el formato solicitado
+      console.log(`\nSender: ${message.sender}`);
+      console.log(`Time: ${message.time}`);
+      console.log(`Message: ${message.content}\n`);
       
       // Reanudar readline y mostrar el prompt de nuevo
       this.rl.resume();
