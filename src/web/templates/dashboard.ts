@@ -522,11 +522,8 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
         .then(data => {
           console.log('[CLIENT-DEBUG] Datos recibidos de groups/available:', JSON.stringify(data));
           if (data.error) {
-            groupsListEl.innerHTML = \`
-              <div class="bg-yellow-50 border border-yellow-200 rounded p-3 mb-2">
-                <p class="text-yellow-800 text-sm">⚠️ \${data.error}</p>
-              </div>
-            \`;
+            console.log('[CLIENT-DEBUG] Error recibido:', data.error);
+            groupsListEl.innerHTML = '<div class="bg-yellow-50 border border-yellow-200 rounded p-3 mb-2"><p class="text-yellow-800 text-sm">⚠️ ' + data.error + '</p></div>';
             return;
           }
 
@@ -559,11 +556,8 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
         })
         .catch(err => {
           console.error('[CLIENT-DEBUG] Error al cargar grupos:', err);
-          groupsListEl.innerHTML = \`
-            <div class="bg-red-50 border border-red-200 rounded p-3">
-              <p class="text-red-800 text-sm">❌ Error al cargar grupos: \${err.message}</p>
-            </div>
-          \`;
+          const errorMsg = err && err.message ? err.message : 'Error desconocido';
+          groupsListEl.innerHTML = '<div class="bg-red-50 border border-red-200 rounded p-3"><p class="text-red-800 text-sm">❌ Error al cargar grupos: ' + errorMsg + '</p></div>';
         });
     }
 
