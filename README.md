@@ -376,6 +376,37 @@ docker stats w2m
 docker-compose exec w2m sh
 ```
 
+### Interacting with W2M in Production (EC2 via SSH)
+
+Once deployed to EC2, you can interact with W2M's CLI via SSH:
+
+```bash
+# 1. Connect to your EC2 instance
+ssh -i ~/.ssh/your-key.pem ubuntu@your-ec2-ip
+
+# 2. Attach to the running container to interact with the CLI
+docker attach w2m
+
+# To detach without stopping the container: Press Ctrl+P, then Ctrl+Q
+# (DO NOT use Ctrl+C directly as it will stop the container)
+
+# 3. View logs without attaching (non-interactive)
+docker-compose logs -f w2m
+
+# 4. Check container status
+docker-compose ps
+
+# 5. Restart the container
+docker-compose restart w2m
+
+# 6. Pull latest image and update (manual update)
+cd ~/w2m
+docker-compose pull
+docker-compose up -d --remove-orphans
+```
+
+**Note**: The CI/CD pipeline automatically updates the container when you push to `main`. Manual updates are only needed if you want to update outside of the CI/CD workflow.
+
 ### Memory Limits
 
 The container is configured to use a maximum of 1536MB RAM, optimized for EC2 Free Tier instances (t3.small).

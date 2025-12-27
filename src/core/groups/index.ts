@@ -19,8 +19,10 @@ export class GroupManager {
   private groups: Map<string, MonitoredGroup> = new Map();
 
   constructor() {
-    // Usar el directorio de datos para guardar la configuración
-    this.groupsPath = join(this.config.WA_SESSION_PATH, '..', 'monitored-groups.json');
+    // Usar directorio de datos genérico (no depende de plugins específicos)
+    // VAULT_PATH es genérico del core, ubicamos groups.json en el mismo nivel que vault
+    // Resultado: ./data/monitored-groups.json (independiente del plugin)
+    this.groupsPath = join(this.config.VAULT_PATH, '..', 'monitored-groups.json');
   }
 
   /**

@@ -28,6 +28,7 @@ export class BaileysIngestor implements IngestorInterface {
   private messageCallbacks: Set<(message: Message) => void> = new Set();
   private isInitialSync = true;
   private initialSyncTimeout: NodeJS.Timeout | null = null;
+  private shouldDisplayQR = false; // Flag para mostrar QR solo cuando se solicita explícitamente
 
   constructor(groupManager?: GroupManager) {
     this.groupManager = groupManager || new GroupManager();
@@ -43,6 +44,7 @@ export class BaileysIngestor implements IngestorInterface {
       return;
     }
 
+    this.shouldDisplayQR = false; // No mostrar QR automáticamente al iniciar
     this.isConnecting = true;
     this.connectionState = 'connecting';
 
@@ -65,6 +67,7 @@ export class BaileysIngestor implements IngestorInterface {
       await this.stop();
     }
 
+    this.shouldDisplayQR = true; // Activar flag para mostrar QR
     this.isConnecting = true;
     this.connectionState = 'connecting';
 
@@ -74,6 +77,7 @@ export class BaileysIngestor implements IngestorInterface {
       logger.error({ error }, 'Error al generar QR');
       this.isConnecting = false;
       this.connectionState = 'disconnected';
+      this.shouldDisplayQR = false;
       throw error;
     }
   }
@@ -106,17 +110,20 @@ export class BaileysIngestor implements IngestorInterface {
 
       if (qr) {
         this.currentQR = qr;
-        process.stdout.write('\n\n');
-        process.stdout.write('═══════════════════════════════════════════════════════\n');
-        process.stdout.write('📱 ESCANEA ESTE CÓDIGO QR CON WHATSAPP:\n');
-        process.stdout.write('═══════════════════════════════════════════════════════\n');
-        process.stdout.write('\n');
-        qrcode.generate(qr, { small: true });
-        process.stdout.write('\n');
-        process.stdout.write('═══════════════════════════════════════════════════════\n');
-        process.stdout.write('⏱️  Tienes 60 segundos para escanear el QR\n');
-        process.stdout.write('📱 Abre WhatsApp → Configuración → Dispositivos vinculados\n');
-        process.stdout.write('═══════════════════════════════════════════════════════\n');
+        // Solo mostrar QR si se solicitó explícitamente (a través del menú)
+        if (this.shouldDisplayQR) {
+          process.stdout.write('\n\n');
+          process.stdout.write('═══════════════════════════════════════════════════════\n');
+          process.stdout.write('📱 ESCANEA ESTE CÓDIGO QR CON WHATSAPP:\n');
+          process.stdout.write('═══════════════════════════════════════════════════════\n');
+          process.stdout.write('\n');
+          qrcode.generate(qr, { small: true });
+          process.stdout.write('\n');
+          process.stdout.write('═══════════════════════════════════════════════════════\n');
+          process.stdout.write('⏱️  Tienes 60 segundos para escanear el QR\n');
+          process.stdout.write('📱 Abre WhatsApp → Configuración → Dispositivos vinculados\n');
+          process.stdout.write('═══════════════════════════════════════════════════════\n');
+        }
       }
 
       if (connection === 'close') {
@@ -172,6 +179,7 @@ export class BaileysIngestor implements IngestorInterface {
         this.isConnecting = false;
         this.connectionState = 'connected';
         this.currentQR = null;
+        this.shouldDisplayQR = false; // Resetear flag cuando se conecta
         
         this.isInitialSync = true;
         if (this.initialSyncTimeout) clearTimeout(this.initialSyncTimeout);
@@ -277,6 +285,7 @@ export class BaileysIngestor implements IngestorInterface {
     
     this.isConnecting = false;
     this.connectionState = 'disconnected';
+    this.shouldDisplayQR = false; // Resetear flag al detener
     this.connectionCallbacks.clear();
   }
 
