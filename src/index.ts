@@ -1,15 +1,17 @@
 // W2M - WhatsApp to Markdown
 // Entry point de la aplicación
 
-import { WhatsAppIngestor } from './core/ingestor/index.js';
+import { createIngestor } from './core/ingestor/factory.js';
 import { W2MCLI } from './cli/index.js';
 import { logger } from './utils/logger.js';
-import { getConfig } from './config/index.js';
+import { GroupManager } from './core/groups/index.js';
 
-const config = getConfig();
+// Inicializar gestor de grupos
+const groupManager = new GroupManager();
+await groupManager.load();
 
-// Inicializar ingestor de WhatsApp
-const ingestor = new WhatsAppIngestor();
+// Crear ingestor usando factory (carga plugin según configuración)
+const ingestor = await createIngestor(groupManager);
 
 // Manejar señales de terminación
 process.on('SIGTERM', async () => {
@@ -25,18 +27,17 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-// Iniciar CLI interactivo PRIMERO (esto mostrará el menú cuando esté listo)
-const cli = new W2MCLI(ingestor);
-cli.start();
-
-// Inicializar grupos monitoreados y conectar automáticamente
+// Inicializar ingestor y CLI
 ingestor.initialize().then(() => {
+  // Iniciar CLI interactivo
+  const cli = new W2MCLI(ingestor, groupManager);
+  cli.start();
+
   // Intentar conectar automáticamente si hay credenciales guardadas (silenciosamente)
   ingestor.start().catch(() => {
     // Error silencioso - el usuario puede generar QR manualmente
   });
 }).catch((error) => {
-  logger.error({ error }, 'Error al inicializar grupos');
-  // Intentar conectar de todas formas
-  ingestor.start().catch(() => {});
+  logger.error({ error }, 'Error al inicializar');
+  process.exit(1);
 });

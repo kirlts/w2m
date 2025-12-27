@@ -1,20 +1,25 @@
 #!/bin/sh
-# Script para ajustar permisos de directorios montados
-# Se ejecuta al iniciar el contenedor como root (setuid)
+#
+# W2M - Fix Permissions Script
+#
+# This script adjusts permissions for mounted data directories.
+# It runs when the container starts as root (setuid).
+#
 
-# Si estamos ejecutando como root (por setuid), ajustar permisos
+# If we're running as root (via setuid), adjust permissions
 if [ "$(id -u)" = "0" ]; then
-    # Ajustar permisos de directorios de datos para que w2m pueda escribir
+    # Adjust data directory permissions so w2m user can write
     chmod -R 777 /app/data 2>/dev/null || true
     chown -R 1001:1001 /app/data 2>/dev/null || true
 fi
 
-# Verificar que el directorio session es escribible
+# Verify that the session directory is writable
 if [ -d /app/data/session ]; then
-    # Intentar crear un archivo de prueba
-    touch /app/data/session/.test 2>/dev/null && rm -f /app/data/session/.test || {
-        echo "⚠️  Warning: No se pueden escribir en /app/data/session" >&2
-        echo "   Ejecuta en el host: chmod -R 777 data/session" >&2
-    }
+    # Try to create a test file
+    if touch /app/data/session/.test 2>/dev/null; then
+        rm -f /app/data/session/.test
+    else
+        echo "⚠️  Warning: Cannot write to /app/data/session" >&2
+        echo "   Run on host: chmod -R 777 data/session" >&2
+    fi
 fi
-

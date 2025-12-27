@@ -3,14 +3,14 @@
 # Multi-stage Dockerfile
 # ============================================
 # 
-# Stages:
-#   - base:        Imagen base con dependencias del sistema
-#   - deps:        Instalación de dependencias npm
-#   - development: Hot-reload para desarrollo local
-#   - builder:     Compilación de TypeScript
-#   - production:  Imagen final optimizada
+# Build stages:
+#   - base:        Base image with system dependencies
+#   - deps:        npm dependencies installation
+#   - development: Hot-reload for local development
+#   - builder:     TypeScript compilation
+#   - production:  Optimized final image
 #
-# Uso:
+# Usage:
 #   Development:  docker build --target development -t w2m:dev .
 #   Production:   docker build --target production -t w2m:latest .
 
@@ -21,17 +21,17 @@ FROM node:20-alpine AS base
 
 WORKDIR /app
 
-# Dependencias del sistema
-# - git: para sincronización con repositorios
-# - tini: init system para manejo correcto de señales
-# - su-exec: para cambiar de usuario de forma segura
+# System dependencies
+# - git: for repository synchronization
+# - tini: init system for proper signal handling
+# - su-exec: to safely switch users
 RUN apk add --no-cache \
     git \
     tini \
     su-exec \
     && rm -rf /var/cache/apk/*
 
-# Configurar git global
+# Configure git globally
 RUN git config --global --add safe.directory '*' && \
     git config --global user.email "w2m@localhost" && \
     git config --global user.name "W2M Bot"
@@ -41,28 +41,30 @@ RUN git config --global --add safe.directory '*' && \
 # ============================================
 FROM base AS deps
 
-# Copiar archivos de dependencias
-COPY package*.json ./
+# Copy dependency files
+COPY package.json ./
+COPY package-lock.json* ./
 
-# Instalar TODAS las dependencias (incluyendo devDependencies)
-# Usa npm ci si existe package-lock.json, sino npm install
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+# Install ALL dependencies (including devDependencies and optionalDependencies)
+# We use npm install instead of npm ci because optionalDependencies (like sharp)
+# have platform-specific dependencies that npm ci doesn't handle well
+RUN npm install
 
 # ============================================
 # Stage: Development
 # ============================================
 FROM deps AS development
 
-# Crear usuario no-root
+# Create non-root user
 RUN addgroup -g 1001 -S w2m && \
     adduser -u 1001 -S w2m -G w2m
 
-# Crear directorios de datos
+# Create data directories
 RUN mkdir -p /app/data/session /app/data/vault /app/data/logs && \
     chown -R w2m:w2m /app
 
-# El código fuente se monta como volumen en docker-compose.override.yml
-# Esto permite hot-reload sin rebuild
+# Source code is mounted as volume in docker-compose.yml (dev profile)
+# This allows hot-reload without rebuild
 
 USER w2m
 
@@ -70,10 +72,10 @@ ENV NODE_ENV=development
 ENV LOG_LEVEL=debug
 ENV LOG_FORMAT=pretty
 
-# Exponer puerto para Node.js Inspector (debugging)
+# Expose port for Node.js Inspector (debugging)
 EXPOSE 9229
 
-# Hot-reload con tsx watch
+# Hot-reload with tsx watch
 CMD ["npx", "tsx", "watch", "src/index.ts"]
 
 # ============================================
@@ -81,14 +83,16 @@ CMD ["npx", "tsx", "watch", "src/index.ts"]
 # ============================================
 FROM deps AS builder
 
-# Copiar código fuente
+# Copy source code
 COPY tsconfig.json ./
 COPY src/ ./src/
 
-# Compilar TypeScript
+# Compile TypeScript (needs all dependencies, including optionalDependencies)
 RUN npm run build
 
-# Eliminar devDependencies para imagen más pequeña
+# Remove devDependencies but keep dependencies and optionalDependencies
+# npm prune --production removes only devDependencies
+# and automatically keeps dependencies and optionalDependencies
 RUN npm prune --production
 
 # ============================================
@@ -96,24 +100,24 @@ RUN npm prune --production
 # ============================================
 FROM base AS production
 
-# Crear usuario no-root por seguridad
+# Create non-root user for security
 RUN addgroup -g 1001 -S w2m && \
     adduser -u 1001 -S w2m -G w2m
 
-# Copiar artefactos del builder
+# Copy artifacts from builder
 COPY --from=builder --chown=w2m:w2m /app/dist ./dist
 COPY --from=builder --chown=w2m:w2m /app/node_modules ./node_modules
 COPY --from=builder --chown=w2m:w2m /app/package.json ./
 
-# Crear directorios de datos
+# Create data directories
 RUN mkdir -p /app/data/session /app/data/vault /app/data/logs && \
     chown -R w2m:w2m /app/data
 
-# Copiar script de entrada
+# Copy entrypoint script
 COPY scripts/entrypoint.sh /app/scripts/entrypoint.sh
 RUN chmod +x /app/scripts/entrypoint.sh
 
-# Variables de entorno de producción
+# Production environment variables
 ENV NODE_ENV=production
 ENV LOG_LEVEL=info
 ENV LOG_FORMAT=json
@@ -122,11 +126,11 @@ ENV LOG_FORMAT=json
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=40s \
     CMD node -e "process.exit(0)"
 
-# NO cambiar a usuario aquí - el entrypoint.sh lo hará
-# Mantener como root para que pueda ajustar permisos
+# DO NOT switch user here - entrypoint.sh will do it
+# Keep as root so it can adjust permissions
 
-# Usar tini como init para manejo correcto de señales
+# Use tini as init for proper signal handling
 ENTRYPOINT ["/sbin/tini", "--"]
 
-# Script de entrada que ajusta permisos y cambia al usuario w2m
+# Entrypoint script that adjusts permissions and switches to w2m user
 CMD ["/app/scripts/entrypoint.sh"]

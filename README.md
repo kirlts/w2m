@@ -1,195 +1,479 @@
 # 📱➡️📝 W2M (WhatsApp to Markdown)
 
-> Framework de ingestión universal para transformar chats de WhatsApp en conocimiento estructurado
+> Modular and extensible universal ingestion framework to transform ephemeral messages into structured knowledge
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
 [![Docker](https://img.shields.io/badge/docker-ready-blue)](https://www.docker.com/)
 
-## 🎯 ¿Qué es W2M?
+## 🎯 What is W2M?
 
-W2M captura flujos de información efímeros desde WhatsApp y los transforma en archivos Markdown permanentes, listos para ser consumidos por cualquier herramienta de texto plano:
+W2M is a modular framework designed to capture ephemeral information streams and transform them into structured Markdown files, ready to be consumed by any Personal Knowledge Management (PKM) tool:
 
 - 📓 **Obsidian**
 - 📋 **Logseq**
 - 💻 **VS Code / Cursor**
-- 📄 **Cualquier editor de texto**
+- 📄 **Any text editor**
 
-## ✨ Características
+## ✨ Key Features
 
-- 🔌 **Conexión WebSocket** - Sin navegador headless, mínimo consumo de RAM
-- 🧩 **Arquitectura de Plugins** - Añade nuevos comandos fácilmente
-- 🔄 **Git Auto-sync** - Sincronización automática con tu repositorio
-- 💬 **Feedback Bidireccional** - Confirmaciones y ayuda en el chat
-- 🐳 **Docker Ready** - Despliegue sencillo en cualquier servidor
-- 🔒 **Soberanía de Datos** - Todo en tu infraestructura
+- 🔌 **Modular Architecture** - Decoupled plugin system for different messaging sources
+- 🧩 **Extensible** - Easy to add new plugins and integrations
+- 🔄 **Git Auto-sync** - Automatic synchronization with your repository
+- 🐳 **Docker Ready** - Simple deployment on any server
+- 🔒 **Data Sovereignty** - Everything in your infrastructure, no external service dependencies
+- ⚡ **Low Resource Consumption** - Optimized for resource-constrained environments (e.g., AWS t3.small)
 
-## 🚀 Inicio Rápido
+## 🏗️ Modular Architecture
 
-### Prerrequisitos
+W2M uses a plugin-based architecture to keep the codebase clean and extensible:
 
-- Docker y Docker Compose
-- Cuenta de WhatsApp
-- (Opcional) Repositorio Git para sincronización
+```
+┌─────────────────────────────────────────────────────────┐
+│                     W2M Core                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │
+│  │   CLI        │  │  Group Mgmt  │  │  Config      │ │
+│  └──────────────┘  └──────────────┘  └──────────────┘ │
+└─────────────────────────────────────────────────────────┘
+                      │
+                      │ Implements
+                      ▼
+          ┌───────────────────────┐
+          │  IngestorInterface    │
+          └───────────────────────┘
+                      │
+          ┌───────────┼───────────┐
+          │           │           │
+          ▼           ▼           ▼
+    ┌─────────┐ ┌─────────┐ ┌─────────┐
+    │ Baileys │ │ Plugin2 │ │ Plugin3 │
+    │ Plugin  │ │  (TBD)  │ │  (TBD)  │
+    └─────────┘ └─────────┘ └─────────┘
+```
 
-### Instalación
+W2M's core **does not include** WhatsApp-specific or other platform-specific dependencies. These are installed as optional plugins.
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Node.js >= 20.0.0
+- Docker and Docker Compose (optional, for deployment)
+- Account on the messaging platform you want to use
+
+### Basic Installation
 
 ```bash
-# Clonar el repositorio
-git clone https://github.com/tu-usuario/w2m.git
+# Clone the repository
+git clone https://github.com/your-username/w2m.git
 cd w2m
 
-# Copiar configuración
-cp .env.example .env
+# Install base dependencies
+npm install
 
-# Editar configuración
+# Install WhatsApp plugin (Baileys) - OPTIONAL
+npm install @whiskeysockets/baileys @hapi/boom qrcode-terminal
+
+# Copy configuration
+cp env.example .env
+
+# Edit configuration
 nano .env
 
-# Iniciar W2M
-docker-compose up
+# Build
+npm run build
+
+# Start
+npm start
 ```
 
-### Escanear QR
+### Docker Installation
 
-1. Observa los logs: `docker-compose logs -f w2m`
-2. Escanea el código QR con WhatsApp
-3. ¡Listo! W2M está escuchando
+#### Production (EC2)
 
-## 📖 Comandos Disponibles
+```bash
+# Clone the repository
+git clone https://github.com/your-username/w2m.git
+cd w2m
 
-| Comando | Descripción | Ejemplo |
-|---------|-------------|---------|
-| `NOTA:` | Captura una nota rápida | `NOTA: Recordar comprar leche` |
-| `TODO:` | Crea una tarea pendiente | `TODO: Revisar documentación` |
-| `IDEA:` | Guarda una idea creativa | `IDEA: App para gatos` |
-| `LINK:` | Guarda un enlace | `LINK: https://ejemplo.com Artículo interesante` |
-| `AYUDA` | Lista comandos disponibles | `AYUDA` |
-| `COMANDOS` | Alias de AYUDA | `COMANDOS` |
+# Copy configuration
+cp env.example .env
 
-## 📁 Estructura del Vault
+# Edit configuration
+nano .env
 
-```
-vault/
-├── notas/           # Notas rápidas
-├── todos/           # Tareas pendientes
-├── ideas/           # Ideas y brainstorming
-├── links/           # Enlaces guardados
-└── inbox/           # Mensajes sin clasificar
+# Start W2M (uses image from GHCR)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f w2m
 ```
 
-## ⚙️ Configuración
+#### Development (Local)
 
-Ver [`.env.example`](.env.example) para todas las opciones disponibles.
+```bash
+# Start in development mode with hot-reload
+./scripts/dev.sh
 
-### Variables Principales
+# Or manually:
+BUILD_TARGET=development NODE_ENV=development LOG_LEVEL=debug LOG_FORMAT=pretty \
+  docker-compose up --build
+```
 
-| Variable | Descripción | Default |
-|----------|-------------|---------|
-| `WA_ALLOWED_GROUPS` | IDs de grupos a monitorear | - |
-| `VAULT_PATH` | Ruta del vault | `./data/vault` |
-| `GIT_ENABLED` | Habilitar Git sync | `true` |
-| `GIT_SYNC_INTERVAL` | Intervalo de sync (ms) | `300000` |
+#### Production Testing (Local)
 
-## 🧩 Crear una Nueva Estrategia
+```bash
+# Test production build locally
+./scripts/test-production-local.sh
 
-1. Crea un archivo en `src/strategies/`:
+# Or manually:
+BUILD_TARGET=production docker-compose up --build
+```
+
+## 🔌 Available Plugins
+
+### Baileys Plugin (WhatsApp)
+
+The Baileys plugin allows connecting W2M to WhatsApp using the [@whiskeysockets/baileys](https://github.com/WhiskeySockets/Baileys) library.
+
+#### Installation
+
+```bash
+npm install @whiskeysockets/baileys @hapi/boom qrcode-terminal
+```
+
+Or if using Docker, these dependencies are automatically installed from `optionalDependencies`.
+
+#### Configuration
+
+The plugin activates automatically if dependencies are installed. Configure the following variables in your `.env`:
+
+```env
+# Ingestor type (default: 'baileys')
+INGESTOR_TYPE=baileys
+
+# Path to store WhatsApp session
+WA_SESSION_PATH=./data/session
+
+# QR code scan timeout (in ms)
+WA_QR_TIMEOUT=60000
+```
+
+#### Usage
+
+1. Start W2M: `npm start` or `docker-compose up`
+2. Select option `1` in the CLI to generate a QR code
+3. Scan the QR with WhatsApp (Settings → Linked Devices)
+4. Once connected, add groups to monitor using option `4`
+
+## 📖 How to Add a New Plugin
+
+W2M is designed to be extensible. You can create plugins for any messaging platform by following these steps:
+
+### 1. Create Plugin Structure
+
+Create a new directory in `src/plugins/your-plugin/`:
+
+```
+src/plugins/your-plugin/
+├── index.ts          # Plugin implementation
+└── README.md         # Plugin documentation (optional)
+```
+
+### 2. Implement the `IngestorInterface`
+
+Your plugin must implement the `IngestorInterface`:
 
 ```typescript
-// src/strategies/mi-comando.strategy.ts
-import { BaseStrategy } from './base';
+// src/plugins/your-plugin/index.ts
+import { IngestorInterface, Message, Group, ConnectionState } from '../../core/ingestor/interface.js';
+import { GroupManager } from '../../core/groups/index.js';
+import { logger } from '../../utils/logger.js';
 
-export class MiComandoStrategy extends BaseStrategy {
-  readonly name = 'mi-comando';
-  readonly displayName = '🎯 Mi Comando';
-  readonly description = 'Descripción del comando';
-  readonly example = 'MICOMANDO: texto';
-  readonly priority = 50;
-  readonly triggers = [/^micomando:/i];
+export class YourPluginIngestor implements IngestorInterface {
+  private groupManager: GroupManager;
+  private connectionState: ConnectionState = 'disconnected';
 
-  protected async process(message) {
-    // Tu lógica aquí
-    return { success: true };
+  constructor(groupManager?: GroupManager) {
+    this.groupManager = groupManager || new GroupManager();
+  }
+
+  async initialize(): Promise<void> {
+    await this.groupManager.load();
+  }
+
+  async start(): Promise<void> {
+    // Your connection logic here
+    this.connectionState = 'connected';
+  }
+
+  async stop(): Promise<void> {
+    // Your disconnection logic here
+    this.connectionState = 'disconnected';
+  }
+
+  async generateQR(): Promise<void> {
+    // If your platform uses QR, implement here
+    // Otherwise, you can throw an error or show instructions
+    throw new Error('QR not supported for this plugin');
+  }
+
+  isConnected(): boolean {
+    return this.connectionState === 'connected';
+  }
+
+  getConnectionState(): ConnectionState {
+    return this.connectionState;
+  }
+
+  onConnected(callback: () => void): void {
+    // Register callback for when connected
+  }
+
+  onMessage(callback: (message: Message) => void): void {
+    // Register callback for when a message is received
+    // When you receive a message, call: callback(messageData);
+  }
+
+  async listGroups(): Promise<Group[]> {
+    // Return list of available groups
+    return [];
   }
 }
 ```
 
-2. Regístrala en `src/strategies/index.ts`
+### 3. Register Plugin in Factory
 
-3. ¡Listo! Reinicia W2M
+Update `src/core/ingestor/factory.ts` to include your new plugin:
 
-Ver [docs/STRATEGIES.md](docs/STRATEGIES.md) para más detalles.
+```typescript
+export async function createIngestor(groupManager?: GroupManager): Promise<IngestorInterface> {
+  const ingestorType = process.env.INGESTOR_TYPE || 'baileys';
+
+  try {
+    switch (ingestorType) {
+      case 'baileys': {
+        const { BaileysIngestor } = await import('../../plugins/baileys/index.js');
+        return new BaileysIngestor(groupManager);
+      }
+      
+      case 'your-plugin': {
+        const { YourPluginIngestor } = await import('../../plugins/your-plugin/index.js');
+        return new YourPluginIngestor(groupManager);
+      }
+      
+      default:
+        throw new Error(`Unknown ingestor type: ${ingestorType}`);
+    }
+  } catch (error: any) {
+    if (error.code === 'MODULE_NOT_FOUND') {
+      logger.error('Plugin not installed. Please install required dependencies.');
+      throw new Error('Plugin not available.');
+    }
+    throw error;
+  }
+}
+```
+
+### 4. Add Optional Dependencies
+
+If your plugin requires external dependencies, add them to `optionalDependencies` in `package.json`:
+
+```json
+{
+  "optionalDependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "your-library": "^1.0.0"
+  }
+}
+```
+
+### 5. Document the Plugin
+
+Create a `README.md` in your plugin directory explaining:
+
+- How to install dependencies
+- Required configuration
+- Specific features
+- Usage examples
+
+### Complete Example
+
+See the Baileys plugin code in `src/plugins/baileys/index.ts` as a complete reference.
+
+## ⚙️ Configuration
+
+See [`.env.example`](.env.example) for all available options.
+
+### Main Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `INGESTOR_TYPE` | Plugin type to use (`baileys`, etc.) | `baileys` |
+| `WA_SESSION_PATH` | Path for sessions (Baileys plugin) | `./data/session` |
+| `VAULT_PATH` | Markdown vault path | `./data/vault` |
+| `GIT_ENABLED` | Enable Git sync | `true` |
+| `LOG_LEVEL` | Logging level | `info` |
+
+## 📁 Project Structure
+
+```
+w2m/
+├── src/
+│   ├── core/              # Framework core
+│   │   ├── ingestor/      # Ingestor interface and factory
+│   │   └── groups/        # Monitored groups management
+│   ├── plugins/           # Platform plugins
+│   │   └── baileys/       # WhatsApp plugin (Baileys)
+│   ├── cli/               # Command-line interface
+│   ├── config/            # Configuration management
+│   └── utils/             # Utilities
+├── scripts/               # Utility scripts
+│   ├── dev.sh             # Development mode script
+│   └── test-production-local.sh  # Local production testing
+├── data/                  # Application data (generated)
+└── dist/                  # Compiled code (generated)
+```
 
 ## 🐳 Docker
 
-### Comandos Útiles
+### Usage Modes
 
+W2M supports different Docker deployment modes via a single `docker-compose.yml` file:
+
+**Production (EC2)**: Uses pre-built image from GitHub Container Registry (GHCR)
 ```bash
-# Ver logs
-docker-compose logs -f w2m
-
-# Reiniciar
-docker-compose restart
-
-# Parar
-docker-compose down
-
-# Ver uso de recursos
-docker stats w2m
+docker-compose up
 ```
 
-### Límites de Memoria
+**Development**: Builds locally with hot-reload
+```bash
+BUILD_TARGET=development NODE_ENV=development LOG_LEVEL=debug LOG_FORMAT=pretty \
+  docker-compose up --build
+```
 
-El contenedor está configurado para usar máximo 512MB de RAM, optimizado para instancias EC2 Free Tier (t3.micro).
+**Production Testing**: Builds production image locally
+```bash
+BUILD_TARGET=production docker-compose up --build
+```
 
-## 📊 Requisitos del Sistema
-
-| Recurso | Mínimo | Recomendado |
-|---------|--------|-------------|
-| RAM | 512 MB | 1 GB |
-| CPU | 1 vCPU | 2 vCPU |
-| Disco | 1 GB | 5 GB |
-| Red | Constante | Constante |
-
-## 🛠️ Desarrollo
+### Useful Commands
 
 ```bash
-# Instalar dependencias
+# View logs
+docker-compose logs -f w2m
+
+# Restart
+docker-compose restart w2m
+
+# Stop
+docker-compose down
+
+# View resource usage
+docker stats w2m
+
+# Open shell in container
+docker-compose exec w2m sh
+```
+
+### Memory Limits
+
+The container is configured to use a maximum of 1536MB RAM, optimized for EC2 Free Tier instances (t3.small).
+
+## 📊 System Requirements
+
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| RAM | 512 MB | 1 GB |
+| CPU | 1 vCPU | 2 vCPU |
+| Disk | 1 GB | 5 GB |
+| Node.js | >= 20.0.0 | >= 20.0.0 |
+
+## 🛠️ Development
+
+```bash
+# Install base dependencies
 npm install
 
-# Desarrollo con hot-reload
+# Install Baileys plugin (for development)
+npm install @whiskeysockets/baileys @hapi/boom qrcode-terminal
+
+# Development with hot-reload
 npm run dev
 
 # Build
 npm run build
+
+# Run
+npm start
 
 # Tests
 npm run test
 
 # Linting
 npm run lint
+npm run lint:fix
+
+# Type checking
+npm run typecheck
 ```
 
-## 📚 Documentación
+### Using Makefile
 
-- [Documento de Diseño Técnico](docs/TDD-W2M.md)
-- [Guía de Estrategias](docs/STRATEGIES.md)
-- [Contribuir](docs/CONTRIBUTING.md)
+```bash
+# Development mode
+make dev
 
-## 🤝 Contribuir
+# Production mode (local testing)
+make prod
 
-¡Las contribuciones son bienvenidas! Por favor lee [CONTRIBUTING.md](docs/CONTRIBUTING.md) primero.
+# Build production image
+make build
 
-## 📄 Licencia
+# View logs
+make logs
+
+# View resource stats
+make stats
+
+# Clean up
+make clean
+
+# See all available commands
+make help
+```
+
+## 🔒 Legal Considerations
+
+**IMPORTANT**: W2M is an agnostic framework and does not include WhatsApp-specific or other platform-specific code in its core. Plugins are optional and installed by the user. Please ensure that:
+
+1. You comply with the Terms of Service of the platforms you use
+2. You do not use W2M for illegal or unauthorized activities
+3. You respect user privacy
+4. You use plugins at your own risk
+
+The Baileys plugin is included as an optional dependency for convenience, but you can create your own plugins for other platforms.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-plugin`)
+3. Commit your changes (`git commit -am 'Add new plugin'`)
+4. Push to the branch (`git push origin feature/my-plugin`)
+5. Open a Pull Request
+
+## 📄 License
 
 MIT © 2025
 
-## 🙏 Agradecimientos
+## 🙏 Acknowledgments
 
-- [@whiskeysockets/baileys](https://github.com/WhiskeySockets/Baileys) - Cliente WebSocket de WhatsApp
-- [simple-git](https://github.com/steveukx/git-js) - Wrapper Git para Node.js
-- [pino](https://github.com/pinojs/pino) - Logger ultra rápido
+- [@whiskeysockets/baileys](https://github.com/WhiskeySockets/Baileys) - WhatsApp WebSocket client (optional plugin)
+- [simple-git](https://github.com/steveukx/git-js) - Git wrapper for Node.js
+- [pino](https://github.com/pinojs/pino) - Ultra-fast logger
 
 ---
 
-**W2M** - Transforma la comunicación efímera en conocimiento permanente 🚀
-
+**W2M** - Transform ephemeral communication into permanent knowledge 🚀

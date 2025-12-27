@@ -1,68 +1,59 @@
 #!/bin/bash
 # ============================================
-# W2M - Script de Desarrollo Local
+# W2M - Local Development Script
 # ============================================
-# Inicia W2M en modo desarrollo con hot-reload
-# Simula el entorno de producción (t3.small: 2 vCPU, 2GB RAM)
+# Starts W2M in development mode with hot-reload
+# Simulates production environment (t3.small: 2 vCPU, 2GB RAM)
 #
-# Uso:
+# Usage:
 #   ./scripts/dev.sh
 
 set -e
 
 echo "============================================"
-echo "🔧 W2M - Modo Desarrollo"
+echo "🔧 W2M - Development Mode"
 echo "============================================"
 echo ""
-echo "📊 Simulando entorno t3.small:"
+echo "📊 Simulating t3.small environment:"
 echo "   - CPU: 2 cores"
 echo "   - RAM: 2 GB"
 echo ""
 
-# ─────────────────────────────────────────────────────────
-# Verificar Docker
-# ─────────────────────────────────────────────────────────
+# Check Docker
 if ! docker info > /dev/null 2>&1; then
-    echo "❌ Error: Docker no está corriendo"
-    echo "   Inicia Docker Desktop o el servicio de Docker"
+    echo "❌ Error: Docker is not running"
+    echo "   Start Docker Desktop or Docker service"
     exit 1
 fi
 
-echo "✅ Docker está corriendo"
+echo "✅ Docker is running"
 
-# ─────────────────────────────────────────────────────────
-# Crear directorios de datos
-# ─────────────────────────────────────────────────────────
-echo "📁 Verificando directorios..."
+# Create data directories
+echo "📁 Checking directories..."
 mkdir -p data/{session,vault,logs}
 
-# ─────────────────────────────────────────────────────────
-# Verificar .env
-# ─────────────────────────────────────────────────────────
+# Check .env
 if [ ! -f .env ]; then
-    echo "📝 Creando .env desde env.example..."
+    echo "📝 Creating .env from env.example..."
     cp env.example .env
-    echo "   ⚠️  Recuerda editar .env con tus valores"
+    echo "   ⚠️  Remember to edit .env with your values"
 fi
 
-# ─────────────────────────────────────────────────────────
-# Iniciar
-# ─────────────────────────────────────────────────────────
+# Start with dev profile
 echo ""
-echo "🚀 Iniciando W2M..."
-echo "   (docker-compose.override.yml se aplica automáticamente)"
+echo "🚀 Starting W2M in development mode..."
 echo ""
-echo "📌 Comandos útiles:"
-echo "   - Ver logs:    docker-compose logs -f w2m"
-echo "   - Parar:       docker-compose down"
-echo "   - Shell:       docker-compose exec w2m sh"
-echo "   - Stats:       docker stats w2m"
+echo "📌 Useful commands:"
+echo "   - View logs:    docker-compose logs -f w2m"
+echo "   - Stop:         docker-compose down"
+echo "   - Shell:        docker-compose exec w2m sh"
+echo "   - Stats:        docker stats w2m"
 echo ""
-echo "🔌 Debugger disponible en: localhost:9229"
+echo "🔌 Debugger available at: localhost:9229"
 echo ""
 echo "============================================"
 echo ""
 
-# Iniciar con build (por si hay cambios en Dockerfile)
-docker-compose up --build
-
+# Start in development mode (builds development target with hot-reload)
+BUILD_TARGET=development NODE_ENV=development LOG_LEVEL=debug LOG_FORMAT=pretty \
+  docker-compose up --build

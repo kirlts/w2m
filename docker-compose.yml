@@ -1,14 +1,44 @@
+# ============================================
+# W2M - Docker Compose Configuration
+# ============================================
+#
+# This single file supports all deployment modes:
+#
+#   Production (EC2 - uses image from GHCR):
+#     docker-compose pull
+#     docker-compose up -d
+#
+#   Development (local with hot-reload):
+#     BUILD_TARGET=development NODE_ENV=development LOG_LEVEL=debug LOG_FORMAT=pretty \
+#       docker-compose up --build
+#
+#   Production (local testing - build locally):
+#     BUILD_TARGET=production docker-compose up --build
+#
+# Note: In production (EC2), the build section is ignored when using 'pull' first.
+#       The image from GHCR will be used. The build section is only used when
+#       explicitly building with --build flag or when BUILD_TARGET is set.
+
 services:
   w2m:
-    # Usar imagen de GitHub Container Registry (GHCR)
-    # En producción, el CI/CD actualizará automáticamente esta imagen
-    image: ghcr.io/kirlts/w2m:latest
+    # Default (EC2): Use image from GHCR
+    # When BUILD_TARGET is set: Build from local Dockerfile
+    image: ${W2M_IMAGE:-ghcr.io/kirlts/w2m:latest}
+    
+    # Build configuration (only used when --build is specified or BUILD_TARGET is set)
+    # In production (EC2), 'docker-compose pull' fetches the image from GHCR
+    # and 'docker-compose up' uses that image, ignoring this build section
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ${BUILD_TARGET:-production}
+    
     container_name: w2m
     restart: unless-stopped
-    stdin_open: true  # Permitir entrada interactiva
-    tty: true         # Asignar pseudo-TTY
+    stdin_open: true  # Allow interactive input
+    tty: true         # Assign pseudo-TTY
     
-    # Límites de recursos para EC2 t3.small (2GB RAM)
+    # Resource limits for EC2 t3.small (2GB RAM)
     deploy:
       resources:
         limits:
@@ -16,29 +46,40 @@ services:
         reservations:
           memory: 512M
     
-    # Variables de entorno
+    # Environment variables
     env_file:
       - .env
     
     environment:
       - NODE_OPTIONS=--max-old-space-size=${NODE_MAX_OLD_SPACE:-1024}
-      - NODE_ENV=production
+      - NODE_ENV=${NODE_ENV:-production}
       - TZ=UTC
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
     
-    # Volúmenes persistentes
+    # Volumes
     volumes:
-      # Datos de sesión de WhatsApp (CRÍTICO - no perder)
+      # WhatsApp session data (CRITICAL - do not lose)
       - ./data/session:/app/data/session
       
-      # Vault con archivos Markdown generados
+      # Vault with generated Markdown files
       - ./data/vault:/app/data/vault
       
-      # Logs de la aplicación
+      # Application logs
       - ./data/logs:/app/data/logs
       
-      # Configuración de Git (si usas SSH)
+      # Git configuration (if using SSH)
       - ~/.ssh:/home/w2m/.ssh:ro
       - ~/.gitconfig:/home/w2m/.gitconfig:ro
+      
+      # Development only: mount source code for hot-reload
+      # Only used when BUILD_TARGET=development
+      - ./src:/app/src:ro
+    
+    # Development only: expose debugger port
+    # Only used when BUILD_TARGET=development
+    ports:
+      - "${DEBUG_PORT:-9229}:9229"
     
     # Health check
     healthcheck:
@@ -55,11 +96,9 @@ services:
         max-size: "10m"
         max-file: "3"
     
-    # Red (opcional, para futura expansión)
     networks:
       - w2m-network
 
 networks:
   w2m-network:
     driver: bridge
-

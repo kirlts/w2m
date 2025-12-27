@@ -7,6 +7,10 @@
 
 w2m-keys.pem
 
+# Documentation (keep only README.md)
+/docs
+*.txt
+
 # --------------------------------------------
 # Dependencies
 # --------------------------------------------

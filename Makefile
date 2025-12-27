@@ -1,7 +1,7 @@
 # ============================================
 # W2M - Makefile
 # ============================================
-# Comandos comunes para desarrollo y producción
+# Common commands for development and production
 
 .PHONY: dev prod build test clean logs shell stats help
 
@@ -10,129 +10,128 @@ IMAGE_NAME := w2m
 CONTAINER_NAME := w2m
 
 # ─────────────────────────────────────────────────────────
-# Desarrollo
+# Development
 # ─────────────────────────────────────────────────────────
 
-## Iniciar en modo desarrollo con hot-reload (simula t3.small)
+## Start in development mode with hot-reload (simulates t3.small)
 dev:
-	@echo "🔧 Iniciando en modo desarrollo..."
+	@echo "🔧 Starting in development mode..."
 	@chmod +x scripts/dev.sh
 	@./scripts/dev.sh
 
-## Iniciar en modo desarrollo (rebuild forzado)
+## Start in development mode (force rebuild)
 dev-rebuild:
-	@echo "🔧 Rebuild completo..."
+	@echo "🔧 Full rebuild..."
 	docker-compose build --no-cache
 	docker-compose up
 
 # ─────────────────────────────────────────────────────────
-# Producción (testing local)
+# Production (local testing)
 # ─────────────────────────────────────────────────────────
 
-## Iniciar en modo producción (para testing local)
+## Start in production mode (for local testing)
 prod:
-	@echo "🚀 Iniciando en modo producción..."
-	docker-compose -f docker-compose.yml -f docker-compose.prod.yml up --build
+	@echo "🚀 Starting in production mode..."
+	BUILD_TARGET=production docker-compose up --build
 
-## Build de imagen de producción
+## Build production image
 build:
-	@echo "📦 Construyendo imagen de producción..."
+	@echo "📦 Building production image..."
 	docker build --target production -t $(IMAGE_NAME):latest .
 
 # ─────────────────────────────────────────────────────────
 # Testing
 # ─────────────────────────────────────────────────────────
 
-## Ejecutar tests
+## Run tests
 test:
-	@echo "🧪 Ejecutando tests..."
+	@echo "🧪 Running tests..."
 	npm run test
 
-## Ejecutar tests con coverage
+## Run tests with coverage
 test-coverage:
-	@echo "🧪 Tests con coverage..."
+	@echo "🧪 Tests with coverage..."
 	npm run test:coverage
 
-## Ejecutar linter
+## Run linter
 lint:
-	@echo "🔍 Ejecutando linter..."
+	@echo "🔍 Running linter..."
 	npm run lint
 
-## Verificar tipos TypeScript
+## Verify TypeScript types
 typecheck:
-	@echo "📝 Verificando tipos..."
+	@echo "📝 Verifying types..."
 	npm run typecheck
 
 # ─────────────────────────────────────────────────────────
-# Utilidades
+# Utilities
 # ─────────────────────────────────────────────────────────
 
-## Ver logs del contenedor
+## View container logs
 logs:
 	docker-compose logs -f $(CONTAINER_NAME)
 
-## Abrir shell en el contenedor
+## Open shell in container
 shell:
 	docker-compose exec $(CONTAINER_NAME) /bin/sh
 
-## Ver estadísticas de recursos
+## View resource statistics
 stats:
-	@echo "📊 Uso de recursos:"
+	@echo "📊 Resource usage:"
 	docker stats $(CONTAINER_NAME) --no-stream
 
-## Limpiar contenedores, volúmenes e imágenes
+## Clean containers, volumes and images
 clean:
-	@echo "🧹 Limpiando..."
+	@echo "🧹 Cleaning..."
 	docker-compose down -v --remove-orphans
 	rm -rf dist/
 	rm -rf data/logs/*
-	@echo "✅ Limpieza completada"
+	@echo "✅ Cleanup completed"
 
-## Limpiar TODO (incluyendo sesión de WhatsApp)
+## Clean EVERYTHING (including WhatsApp session)
 clean-all: clean
-	@echo "⚠️  Eliminando sesión de WhatsApp..."
+	@echo "⚠️  Removing WhatsApp session..."
 	rm -rf data/session/*
-	@echo "✅ Limpieza total completada"
+	@echo "✅ Full cleanup completed"
 
 # ─────────────────────────────────────────────────────────
-# Instalación
+# Installation
 # ─────────────────────────────────────────────────────────
 
-## Instalar dependencias
+## Install dependencies
 install:
-	@echo "📦 Instalando dependencias..."
+	@echo "📦 Installing dependencies..."
 	npm ci
 
-## Setup inicial del proyecto
+## Initial project setup
 setup: install
-	@echo "📁 Creando directorios..."
+	@echo "📁 Creating directories..."
 	mkdir -p data/{session,vault,logs}
 	@if [ ! -f .env ]; then \
-		echo "📝 Creando .env..."; \
+		echo "📝 Creating .env..."; \
 		cp env.example .env; \
 	fi
-	@echo "✅ Setup completado"
+	@echo "✅ Setup completed"
 	@echo ""
-	@echo "Próximos pasos:"
-	@echo "  1. Edita .env con tus valores"
-	@echo "  2. Ejecuta: make dev"
+	@echo "Next steps:"
+	@echo "  1. Edit .env with your values"
+	@echo "  2. Run: make dev"
 
 # ─────────────────────────────────────────────────────────
-# Ayuda
+# Help
 # ─────────────────────────────────────────────────────────
 
-## Mostrar esta ayuda
+## Show this help
 help:
 	@echo "============================================"
-	@echo "W2M - Comandos disponibles"
+	@echo "W2M - Available Commands"
 	@echo "============================================"
 	@echo ""
 	@grep -E '^## ' Makefile | sed 's/## //'
 	@echo ""
-	@echo "Uso: make <comando>"
+	@echo "Usage: make <command>"
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
 # Default
 .DEFAULT_GOAL := help
-

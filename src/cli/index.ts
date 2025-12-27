@@ -1,14 +1,17 @@
 // W2M - CLI Interactivo
 import readline from 'readline';
-import { WhatsAppIngestor } from '../core/ingestor/index.js';
+import { IngestorInterface } from '../core/ingestor/interface.js';
+import { GroupManager } from '../core/groups/index.js';
 import { logger } from '../utils/logger.js';
 
 export class W2MCLI {
   private rl: readline.Interface;
-  private ingestor: WhatsAppIngestor;
+  private ingestor: IngestorInterface;
+  private groupManager: GroupManager;
 
-  constructor(ingestor: WhatsAppIngestor) {
+  constructor(ingestor: IngestorInterface, groupManager: GroupManager) {
     this.ingestor = ingestor;
+    this.groupManager = groupManager;
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -67,10 +70,10 @@ export class W2MCLI {
   }
 
   /**
-   * Configurar handler para mostrar mensajes del grupo "Pc" inmediatamente
+   * Configurar handler para mostrar mensajes inmediatamente
    */
   private setupMessageHandler(): void {
-    this.ingestor.onGroupMessage((message) => {
+    this.ingestor.onMessage((message) => {
       this.displayMessageImmediately(message);
     });
   }
@@ -108,7 +111,7 @@ export class W2MCLI {
 
   private showMenu(): void {
     const status = this.ingestor.isConnected() ? '✅ Conectado' : '❌ Desconectado';
-    const groupCount = this.ingestor.getGroupManager().getAllGroups().length;
+    const groupCount = this.groupManager.getAllGroups().length;
     console.log(`\n📱 W2M - WhatsApp to Markdown [${status}]`);
     console.log('─────────────────────────────────────────────────────');
     console.log(`1) QR  |  2) Estado  |  3) Desconectar  |  4) Grupos (${groupCount})  |  5) Salir`);
@@ -218,8 +221,7 @@ export class W2MCLI {
   private async manageGroups(): Promise<void> {
     process.stdout.write('\r' + ' '.repeat(80) + '\r');
     
-    const groupManager = this.ingestor.getGroupManager();
-    const monitoredGroups = groupManager.getAllGroups();
+    const monitoredGroups = this.groupManager.getAllGroups();
     
     console.log('\n═══════════════════════════════════════════════════════');
     console.log('📋 Gestión de Grupos Monitoreados');
@@ -261,7 +263,32 @@ export class W2MCLI {
   }
 
   private async addGroup(): Promise<void> {
-    await this.ingestor.listAvailableGroups();
+    try {
+      const groups = await this.ingestor.listGroups();
+      
+      console.log('\n═══════════════════════════════════════════════════════');
+      console.log('📱 Grupos Disponibles:');
+      console.log('═══════════════════════════════════════════════════════\n');
+
+      const monitoredGroups = this.groupManager.getAllGroups();
+      const monitoredNames = new Set(monitoredGroups.map(g => g.name.toLowerCase()));
+
+      groups.forEach((group, index) => {
+        const isMonitored = monitoredNames.has(group.name.toLowerCase());
+        const status = isMonitored ? '✅ Monitoreado' : '⚪ No monitoreado';
+        console.log(`${index + 1}. ${group.name} ${status}`);
+        if (group.participants) {
+          console.log(`   👥 ${group.participants} participantes\n`);
+        }
+      });
+
+      console.log('═══════════════════════════════════════════════════════\n');
+    } catch (error) {
+      console.log('\n⚠️  No estás conectado. Conecta primero con la opción 1.\n');
+      this.showMenu();
+      this.prompt();
+      return;
+    }
     
     this.rl.question('\nIngresa el nombre exacto del grupo a agregar (o Enter para cancelar): ', async (answer) => {
       const groupName = answer.trim();
@@ -273,8 +300,7 @@ export class W2MCLI {
         return;
       }
 
-      const groupManager = this.ingestor.getGroupManager();
-      const added = await groupManager.addGroup(groupName);
+      const added = await this.groupManager.addGroup(groupName);
       
       if (added) {
         console.log(`✅ Grupo "${groupName}" agregado a monitoreo.\n`);
@@ -288,8 +314,7 @@ export class W2MCLI {
   }
 
   private async removeGroup(): Promise<void> {
-    const groupManager = this.ingestor.getGroupManager();
-    const monitoredGroups = groupManager.getAllGroups();
+    const monitoredGroups = this.groupManager.getAllGroups();
     
     if (monitoredGroups.length === 0) {
       console.log('⚪ No hay grupos monitoreados para remover.\n');
@@ -314,7 +339,7 @@ export class W2MCLI {
         return;
       }
 
-      const removed = await groupManager.removeGroup(groupName);
+      const removed = await this.groupManager.removeGroup(groupName);
       
       if (removed) {
         console.log(`✅ Grupo "${groupName}" removido de monitoreo.\n`);
