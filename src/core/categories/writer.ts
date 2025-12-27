@@ -1,11 +1,9 @@
 // W2M - Category Markdown Writer
 // Sistema para escribir mensajes categorizados en archivos markdown
 
-import { readFile, writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
-import { join, dirname } from 'path';
 import { CategoryManager, CategoryField, Category } from './index.js';
 import { Message } from '../ingestor/interface.js';
+import { StorageInterface } from '../storage/interface.js';
 import { logger } from '../../utils/logger.js';
 
 interface CategorizedMessage {
@@ -18,9 +16,11 @@ interface CategorizedMessage {
 
 export class CategoryWriter {
   private categoryManager: CategoryManager;
+  private storage: StorageInterface;
 
-  constructor(categoryManager: CategoryManager) {
+  constructor(categoryManager: CategoryManager, storage: StorageInterface) {
     this.categoryManager = categoryManager;
+    this.storage = storage;
   }
 
   /**
@@ -54,7 +54,11 @@ export class CategoryWriter {
 
     try {
       await this.appendToCategoryFile(category, categorizedMessage);
-      logger.info({ category: category.name, content: detected.content.substring(0, 50) }, 'Mensaje categorizado guardado exitosamente');
+      logger.info({ 
+        category: category.name, 
+        sender: message.sender,
+        contentPreview: detected.content.substring(0, 50) + (detected.content.length > 50 ? '...' : '')
+      }, `✅ Mensaje guardado en categoría "${category.name}"`);
       return true;
     } catch (error) {
       logger.error({ error, category: category.name, filePath: this.categoryManager.getCategoryMarkdownPath(category.name) }, 'Error al guardar mensaje categorizado');
@@ -69,23 +73,21 @@ export class CategoryWriter {
     category: Category,
     message: CategorizedMessage
   ): Promise<void> {
-    const filePath = this.categoryManager.getCategoryMarkdownPath(category.name);
-    const dir = dirname(filePath);
-
-    // Crear directorio si no existe
-    if (!existsSync(dir)) {
-      await mkdir(dir, { recursive: true });
-    }
+    // Obtener ruta relativa (ej: "categories/test.md")
+    const relativePath = this.categoryManager.getCategoryMarkdownRelativePath(category.name);
 
     // Leer archivo existente o crear nuevo
     let existingMessages: CategorizedMessage[] = [];
     let header = '';
 
-    if (existsSync(filePath)) {
-      const fileContent = await readFile(filePath, 'utf-8');
-      const parsed = this.parseMarkdownFile(fileContent);
-      header = parsed.header;
-      existingMessages = parsed.messages;
+    const fileExists = await this.storage.exists(relativePath);
+    if (fileExists) {
+      const fileContent = await this.storage.readFile(relativePath);
+      if (fileContent) {
+        const parsed = this.parseMarkdownFile(fileContent);
+        header = parsed.header;
+        existingMessages = parsed.messages;
+      }
     } else {
       // Crear header nuevo
       header = this.generateHeader(category);
@@ -108,12 +110,11 @@ export class CategoryWriter {
     // Generar contenido del archivo
     const content = this.generateMarkdownContent(header, category, existingMessages);
     
-    // Escribir archivo
+    // Escribir archivo usando StorageInterface
     try {
-      await writeFile(filePath, content, 'utf-8');
-      logger.info({ category: category.name, filePath, messageCount: existingMessages.length }, 'Archivo markdown actualizado exitosamente');
+      await this.storage.saveFile(relativePath, content);
     } catch (error) {
-      logger.error({ error, category: category.name, filePath }, 'Error al escribir archivo markdown');
+      logger.error({ error, category: category.name, relativePath }, 'Error al escribir archivo markdown');
       throw error;
     }
   }

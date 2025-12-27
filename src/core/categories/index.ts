@@ -13,6 +13,7 @@ export interface Category {
   name: string;
   description?: string;
   enabledFields: CategoryField[];
+  separator: string; // Separador para detectar categoría (default: ",,")
   createdAt: string;
 }
 
@@ -73,7 +74,7 @@ export class CategoryManager {
   /**
    * Agregar una nueva categoría
    */
-  async addCategory(name: string, description?: string, enabledFields?: CategoryField[]): Promise<boolean> {
+  async addCategory(name: string, description?: string, enabledFields?: CategoryField[], separator?: string): Promise<boolean> {
     const normalizedName = name.toLowerCase();
     
     if (this.categories.has(normalizedName)) {
@@ -86,10 +87,17 @@ export class CategoryManager {
       fields.push('CONTENIDO');
     }
 
+    // Validar separador (1-3 caracteres, default: ",,")
+    let validSeparator = separator || ',,';
+    if (validSeparator.length < 1 || validSeparator.length > 3) {
+      validSeparator = ',,';
+    }
+
     const category: Category = {
       name: name, // Guardar con el nombre original (case-sensitive para mostrar)
       description,
       enabledFields: fields,
+      separator: validSeparator,
       createdAt: new Date().toISOString(),
     };
 
@@ -153,41 +161,58 @@ export class CategoryManager {
 
   /**
    * Detectar si un mensaje pertenece a una categoría
-   * Formato esperado: "CATEGORIA: contenido"
+   * Formato esperado: "CATEGORIA<separador>contenido"
+   * El separador por defecto es ",," pero puede ser configurado por categoría (1-3 caracteres)
    */
   detectCategory(messageContent: string): { categoryName: string; content: string } | null {
-    const colonIndex = messageContent.indexOf(':');
-    if (colonIndex === -1 || colonIndex === 0) {
-      return null;
+    // Iterar sobre todas las categorías y buscar coincidencia con su separador
+    for (const category of this.categories.values()) {
+      const separator = category.separator || ',,';
+      const separatorIndex = messageContent.indexOf(separator);
+      
+      if (separatorIndex === -1 || separatorIndex === 0) {
+        continue;
+      }
+
+      const potentialCategory = messageContent.substring(0, separatorIndex).trim();
+      // Eliminar espacios en blanco justo después del separador
+      const rawContent = messageContent.substring(separatorIndex + separator.length);
+      const content = rawContent.replace(/^\s+/, ''); // Quitar espacios al inicio
+
+      if (!potentialCategory || !content) {
+        continue;
+      }
+
+      // Verificar si coincide con esta categoría (case-insensitive)
+      if (potentialCategory.toLowerCase() === category.name.toLowerCase()) {
+        logger.debug({ categoryName: category.name, separator, contentLength: content.length }, 'Categoría detectada en mensaje');
+        return {
+          categoryName: category.name,
+          content: content,
+        };
+      }
     }
 
-    const potentialCategory = messageContent.substring(0, colonIndex).trim();
-    const content = messageContent.substring(colonIndex + 1).trim();
-
-    if (!potentialCategory || !content) {
-      return null;
-    }
-
-    // Buscar categoría (case-insensitive)
-    const category = this.categories.get(potentialCategory.toLowerCase());
-    if (!category) {
-      logger.debug({ potentialCategory, availableCategories: Array.from(this.categories.keys()) }, 'Categoría no encontrada en mensaje');
-      return null;
-    }
-
-    logger.debug({ categoryName: category.name, contentLength: content.length }, 'Categoría detectada en mensaje');
-    return {
-      categoryName: category.name,
-      content: content,
-    };
+    logger.debug({ availableCategories: Array.from(this.categories.keys()) }, 'No se encontró categoría en mensaje');
+    return null;
   }
 
   /**
-   * Obtener el path del archivo markdown para una categoría
+   * Obtener el path absoluto del archivo markdown para una categoría (legacy)
+   * @deprecated Usar getCategoryMarkdownRelativePath en su lugar
    */
   getCategoryMarkdownPath(categoryName: string): string {
     const normalizedName = categoryName.toLowerCase();
     return join(this.config.VAULT_PATH, 'categories', `${normalizedName}.md`);
+  }
+
+  /**
+   * Obtener la ruta relativa del archivo markdown para una categoría
+   * Ejemplo: "categories/test.md"
+   */
+  getCategoryMarkdownRelativePath(categoryName: string): string {
+    const normalizedName = categoryName.toLowerCase();
+    return `categories/${normalizedName}.md`;
   }
 
   /**

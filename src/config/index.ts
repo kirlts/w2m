@@ -40,6 +40,11 @@ const configSchema = z.object({
   
   // Timezone
   TZ: z.string().default('America/Santiago'),
+  
+  // Web Dashboard
+  WEB_ENABLED: z.coerce.boolean().default(true),
+  WEB_PORT: z.coerce.number().default(3000),
+  WEB_HOST: z.string().default('0.0.0.0'),
 });
 
 export type Config = z.infer<typeof configSchema>;

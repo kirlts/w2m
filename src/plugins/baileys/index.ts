@@ -16,6 +16,7 @@ import { IngestorInterface, Message, Group, ConnectionState } from '../../core/i
 import { GroupManager } from '../../core/groups/index.js';
 import { getConfig } from '../../config/index.js';
 import { logger } from '../../utils/logger.js';
+import { broadcastSSE } from '../../web/sse.js';
 
 export class BaileysIngestor implements IngestorInterface {
   private socket: WASocket | null = null;
@@ -110,7 +111,19 @@ export class BaileysIngestor implements IngestorInterface {
 
       if (qr) {
         this.currentQR = qr;
-        // Solo mostrar QR si se solicitó explícitamente (a través del menú)
+        
+        // Enviar QR a SSE (siempre, para el dashboard web)
+        // Enviamos el código QR original para que el frontend pueda generar la imagen
+        try {
+          broadcastSSE('qr', { 
+            qrCode: qr, // Código QR original para generar imagen
+            message: 'QR generado, escanea con WhatsApp' 
+          });
+        } catch (error) {
+          // Ignorar si no hay clientes SSE conectados
+        }
+        
+        // Solo mostrar QR en terminal si se solicitó explícitamente (a través del menú)
         if (this.shouldDisplayQR) {
           process.stdout.write('\n\n');
           process.stdout.write('═══════════════════════════════════════════════════════\n');

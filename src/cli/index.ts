@@ -4,7 +4,9 @@ import { IngestorInterface } from '../core/ingestor/interface.js';
 import { GroupManager } from '../core/groups/index.js';
 import { CategoryManager, CategoryField } from '../core/categories/index.js';
 import { CategoryWriter } from '../core/categories/writer.js';
+import { StorageInterface } from '../core/storage/interface.js';
 import { logger } from '../utils/logger.js';
+import { broadcastSSE } from '../web/sse.js';
 
 export class W2MCLI {
   private rl: readline.Interface;
@@ -14,11 +16,11 @@ export class W2MCLI {
   private categoryWriter: CategoryWriter;
   private isInSubMenu: boolean = false; // Flag para indicar si estamos en un submenú
 
-  constructor(ingestor: IngestorInterface, groupManager: GroupManager, categoryManager: CategoryManager) {
+  constructor(ingestor: IngestorInterface, groupManager: GroupManager, categoryManager: CategoryManager, storage: StorageInterface) {
     this.ingestor = ingestor;
     this.groupManager = groupManager;
     this.categoryManager = categoryManager;
-    this.categoryWriter = new CategoryWriter(categoryManager);
+    this.categoryWriter = new CategoryWriter(categoryManager, storage);
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -104,6 +106,19 @@ export class W2MCLI {
       console.log(`Sender: ${message.sender}`);
       console.log(`Time: ${message.time}`);
       console.log(`Message: ${message.content}\n`);
+      
+      // Enviar mensaje al SSE para el dashboard (solo via broadcastSSE, no logger para evitar duplicados)
+      try {
+        broadcastSSE('message', {
+          group: message.group,
+          sender: message.sender,
+          time: message.time,
+          content: message.content,
+          timestamp: new Date().toISOString()
+        });
+      } catch (sseError) {
+        // Ignorar errores de SSE
+      }
       
       // Reanudar readline y mostrar el prompt de nuevo
       this.rl.resume();
@@ -523,22 +538,33 @@ export class W2MCLI {
           selectedFields.push('CONTENIDO');
         }
 
-        // Descripción (opcional)
-        this.rl.question('Descripción (opcional, Enter para omitir): ', async (description) => {
+        // Separador (default: ",,")
+        this.rl.question('Separador (1-3 caracteres, Enter para usar ",,"): ', async (separatorAnswer) => {
           process.stdout.write('\r' + ' '.repeat(80) + '\r');
-          const trimmedDesc = description.trim() || undefined;
+          let separator = separatorAnswer.trim() || ',,';
           
-          const added = await this.categoryManager.addCategory(trimmedName, trimmedDesc, selectedFields);
-          
-          if (added) {
-            console.log(`✅ Categoría "${trimmedName}" creada exitosamente.\n`);
-          } else {
-            console.log(`⚠️  La categoría "${trimmedName}" ya existe.\n`);
+          if (separator.length < 1 || separator.length > 3) {
+            console.log('⚠️  Separador inválido. Usando ",," por defecto.');
+            separator = ',,';
           }
-          
-          this.isInSubMenu = false;
-          this.showMenu();
-          this.prompt();
+
+          // Descripción (opcional)
+          this.rl.question('Descripción (opcional, Enter para omitir): ', async (description) => {
+            process.stdout.write('\r' + ' '.repeat(80) + '\r');
+            const trimmedDesc = description.trim() || undefined;
+            
+            const added = await this.categoryManager.addCategory(trimmedName, trimmedDesc, selectedFields, separator);
+            
+            if (added) {
+              console.log(`✅ Categoría "${trimmedName}" creada exitosamente (separador: "${separator}").\n`);
+            } else {
+              console.log(`⚠️  La categoría "${trimmedName}" ya existe.\n`);
+            }
+            
+            this.isInSubMenu = false;
+            this.showMenu();
+            this.prompt();
+          });
         });
       });
     });
@@ -642,7 +668,7 @@ export class W2MCLI {
     console.log('═══════════════════════════════════════════════════════\n');
     categories.forEach((category, index) => {
       console.log(`${index + 1}. ${category.name}${category.description ? ` - ${category.description}` : ''}`);
-      console.log(`   Campos actuales: ${category.enabledFields.join(', ')}\n`);
+      console.log(`   Campos: ${category.enabledFields.join(', ')} | Separador: "${category.separator || ',,'}"\n`);
     });
     console.log('');
 
@@ -704,19 +730,37 @@ export class W2MCLI {
           selectedFields.push('CONTENIDO');
         }
 
-        const updated = await this.categoryManager.updateCategory(selectedCategory.name, {
-          enabledFields: selectedFields,
+        // Separador
+        console.log(`\nSeparador actual: "${selectedCategory.separator || ',,'}"`);
+        this.rl.question('Nuevo separador (1-3 caracteres, Enter para mantener actual): ', async (separatorAnswer) => {
+          process.stdout.write('\r' + ' '.repeat(80) + '\r');
+          let separator = separatorAnswer.trim();
+          
+          if (separator && (separator.length < 1 || separator.length > 3)) {
+            console.log('⚠️  Separador inválido. Manteniendo el actual.');
+            separator = '';
+          }
+
+          const updates: { enabledFields: CategoryField[]; separator?: string } = {
+            enabledFields: selectedFields,
+          };
+          
+          if (separator) {
+            updates.separator = separator;
+          }
+
+          const updated = await this.categoryManager.updateCategory(selectedCategory.name, updates);
+          
+          if (updated) {
+            console.log(`✅ Categoría "${selectedCategory.name}" actualizada.\n`);
+          } else {
+            console.log(`❌ Error al actualizar la categoría.\n`);
+          }
+          
+          this.isInSubMenu = false;
+          this.showMenu();
+          this.prompt();
         });
-        
-        if (updated) {
-          console.log(`✅ Campos de la categoría "${selectedCategory.name}" actualizados.\n`);
-        } else {
-          console.log(`❌ Error al actualizar la categoría.\n`);
-        }
-        
-        this.isInSubMenu = false;
-        this.showMenu();
-        this.prompt();
       });
     });
   }

@@ -19,6 +19,8 @@ W2M is a modular framework designed to capture ephemeral information streams and
 
 - 🔌 **Modular Architecture** - Decoupled plugin system for different messaging sources
 - 🧩 **Extensible** - Easy to add new plugins and integrations
+- 🌐 **Web Dashboard** - Real-time monitoring, QR display, and configuration via browser
+- 📁 **Category System** - Automatic message categorization with customizable separators
 - 🔄 **Git Auto-sync** - Automatic synchronization with your repository
 - 🐳 **Docker Ready** - Simple deployment on any server
 - 🔒 **Data Sovereignty** - Everything in your infrastructure, no external service dependencies
@@ -314,6 +316,53 @@ See [`.env.example`](.env.example) for all available options.
 | `VAULT_PATH` | Markdown vault path | `./data/vault` |
 | `GIT_ENABLED` | Enable Git sync | `true` |
 | `LOG_LEVEL` | Logging level | `info` |
+| `WEB_ENABLED` | Enable web dashboard | `true` |
+| `WEB_PORT` | Web dashboard port | `3000` |
+| `WEB_HOST` | Web dashboard host | `0.0.0.0` |
+
+## 🌐 Web Dashboard
+
+W2M includes a lightweight web dashboard for easy management without SSH access.
+
+### Accessing the Dashboard
+
+- **Local**: `http://localhost:3000/web`
+- **EC2**: `http://your-ec2-ip:3000/web` (requires port 3000 open in Security Group)
+
+### Dashboard Features
+
+- **Connection Status**: Real-time connection status with connect/disconnect buttons
+- **QR Code Display**: Visual QR code for WhatsApp authentication
+- **Real-time Logs**: Live log streaming via Server-Sent Events
+- **Group Management**: Add/remove monitored groups
+- **Category Management**: Create, configure, and delete categories
+- **Markdown Viewer**: View and copy category markdown content
+
+### AWS EC2 Configuration
+
+To access the dashboard from your browser, add an inbound rule to your EC2 Security Group:
+
+| Type | Protocol | Port Range | Source |
+|------|----------|------------|--------|
+| Custom TCP | TCP | 3000 | Your IP or 0.0.0.0/0 |
+
+## 📁 Message Categories
+
+W2M supports automatic message categorization. Messages matching the format `CATEGORY<separator>content` are saved to category-specific markdown files.
+
+### Category Features
+
+- **Custom Separator**: Each category can have its own separator (1-3 characters, default: `,,`)
+- **Configurable Fields**: Choose which fields to include (AUTOR, HORA, FECHA, CONTENIDO)
+- **Markdown Export**: View and copy generated markdown via CLI or dashboard
+
+### Example Message
+
+```
+CODE,,function test() { return true; }
+```
+
+This message will be saved to `data/vault/categories/code.md` if a "CODE" category exists with separator `,,`.
 
 ## 📁 Project Structure
 
@@ -322,9 +371,11 @@ w2m/
 ├── src/
 │   ├── core/              # Framework core
 │   │   ├── ingestor/      # Ingestor interface and factory
-│   │   └── groups/        # Monitored groups management
+│   │   ├── groups/        # Monitored groups management
+│   │   └── categories/    # Category management and writer
 │   ├── plugins/           # Platform plugins
 │   │   └── baileys/       # WhatsApp plugin (Baileys)
+│   ├── web/               # Web dashboard (Hono, HTMX)
 │   ├── cli/               # Command-line interface
 │   ├── config/            # Configuration management
 │   └── utils/             # Utilities
