@@ -342,16 +342,6 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
       </div>
     </div>
 
-    <!-- OAuth Google Drive -->
-    <div class="bg-white rounded-lg shadow p-6">
-      <h2 class="text-xl font-semibold mb-4">Google Drive Sync</h2>
-      <button 
-        hx-get="/web/api/oauth/googledrive/start"
-        class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-      >
-        Conectar con Google Drive
-      </button>
-    </div>
   </div>
 
   <script>
@@ -439,6 +429,45 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
           \`;
         });
     }, 2000);
+
+    // Actualizar estado de Google Drive Storage
+    function updateStorageStatus() {
+      fetch('/web/api/storage/status')
+        .then(res => res.json())
+        .then(data => {
+          const statusEl = document.getElementById('storage-status');
+          const actionsEl = document.getElementById('storage-actions');
+          const infoEl = document.getElementById('storage-info');
+          
+          if (statusEl) {
+            if (data.configured) {
+              statusEl.innerHTML = \`
+                <p class="text-green-600 font-medium">✅ \${data.message || 'Google Drive configurado'}</p>
+                <p class="text-sm text-gray-500 mt-1">Tipo: \${data.storageType}</p>
+              \`;
+            } else {
+              statusEl.innerHTML = \`
+                <p class="text-yellow-600 font-medium">⚠️ \${data.message || 'Google Drive no configurado'}</p>
+                <p class="text-sm text-gray-500 mt-1">Tipo: \${data.storageType}</p>
+              \`;
+            }
+          }
+          
+          if (infoEl && data.serviceAccountPath) {
+            infoEl.innerHTML = \`<p class="text-xs">Ruta: <code class="bg-gray-100 px-1 rounded">\${data.serviceAccountPath}</code></p>\`;
+          }
+        })
+        .catch(err => {
+          const statusEl = document.getElementById('storage-status');
+          if (statusEl) {
+            statusEl.innerHTML = \`<p class="text-red-500">❌ Error al verificar estado: \${err.message}</p>\`;
+          }
+        });
+    }
+    
+    // Actualizar inmediatamente y luego cada 5 segundos
+    updateStorageStatus();
+    setInterval(updateStorageStatus, 5000);
 
 
     // ==========================================
@@ -636,8 +665,19 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
     window.openConfigureFieldsModalFromButton = openConfigureFieldsModalFromButton;
     window.viewCategoryMarkdown = viewCategoryMarkdown;
     window.copyMarkdown = copyMarkdown;
-    window.showServiceAccountGuide = showServiceAccountGuide;
-    window.showGoogleDriveSetup = showGoogleDriveSetup;
+    // Funciones para mostrar guías (si se necesitan en el futuro)
+    window.showServiceAccountGuide = function() {
+      const guideEl = document.getElementById('storage-setup-guide');
+      if (guideEl) {
+        guideEl.classList.remove('hidden');
+      }
+    };
+    window.showGoogleDriveSetup = function() {
+      const guideEl = document.getElementById('storage-setup-guide');
+      if (guideEl) {
+        guideEl.classList.remove('hidden');
+      }
+    };
   </script>
 </body>
 </html>`;

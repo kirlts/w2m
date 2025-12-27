@@ -14,6 +14,12 @@ if [ "$(id -u)" = "0" ]; then
     chmod -R 777 /app/data 2>/dev/null || true
     chown -R 1001:1001 /app/data 2>/dev/null || true
     
+    # Ensure Google Drive service account file is readable
+    if [ -f /app/data/googledrive/service-account.json ]; then
+        chmod 644 /app/data/googledrive/service-account.json 2>/dev/null || true
+        chown 1001:1001 /app/data/googledrive/service-account.json 2>/dev/null || true
+    fi
+    
     # Verify that session directory is writable
     if [ -d /app/data/session ]; then
         if touch /app/data/session/.test 2>/dev/null; then

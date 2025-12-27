@@ -69,7 +69,8 @@ services:
       - ./data/logs:/app/data/logs
       
       # Google Drive Service Account credentials
-      - ./data/googledrive:/app/data/googledrive:ro
+      # Note: Not :ro to allow permission adjustments
+      - ./data/googledrive:/app/data/googledrive
       
       # Git configuration (if using SSH)
       - ~/.ssh:/home/w2m/.ssh:ro
