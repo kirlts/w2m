@@ -364,6 +364,114 @@ CODE,,function test() { return true; }
 
 This message will be saved to `data/vault/categories/code.md` if a "CODE" category exists with separator `,,`.
 
+## ☁️ Google Drive Synchronization
+
+W2M can automatically sync your markdown files to Google Drive, keeping your data backed up and accessible from anywhere.
+
+### Setup Methods
+
+W2M supports two authentication methods for Google Drive:
+
+#### Option 1: Service Account (Recommended)
+
+**Advantages:**
+- ✅ No browser authentication required
+- ✅ No redirect URIs needed
+- ✅ Works automatically on servers
+- ✅ No IP/domain restrictions
+
+**Setup Steps:**
+
+1. **Create Service Account in GCP:**
+   - Follow the detailed guide: [`docs/GCP-SERVICE-ACCOUNT-SETUP.md`](docs/GCP-SERVICE-ACCOUNT-SETUP.md)
+   - Create a Service Account in Google Cloud Console
+   - Download the JSON credentials file
+
+2. **Upload JSON to Server:**
+   ```bash
+   scp -i your-key.pem service-account.json ubuntu@your-ec2:/home/ubuntu/w2m/data/googledrive/service-account.json
+   ```
+
+3. **Configure `.env`:**
+   ```env
+   STORAGE_TYPE=googledrive
+   GOOGLE_SERVICE_ACCOUNT_PATH=./data/googledrive/service-account.json
+   ```
+
+4. **(Optional) Share Folder:**
+   - Create a folder "W2M" in your Google Drive
+   - Share it with the Service Account email (found in the JSON file)
+   - Give it "Editor" permissions
+   - This allows you to see files in your personal Drive
+
+#### Option 2: OAuth (For Web Apps)
+
+**Advantages:**
+- ✅ User-specific access
+- ✅ Works with user's personal Drive
+
+**Setup Steps:**
+
+1. **Configure OAuth in GCP:**
+   - Follow the detailed guide: [`docs/GCP-OAUTH-SETUP.md`](docs/GCP-OAUTH-SETUP.md)
+   - Create OAuth 2.0 credentials
+   - Configure redirect URIs
+
+2. **Configure `.env`:**
+   ```env
+   STORAGE_TYPE=googledrive
+   GOOGLE_CLIENT_ID=your-client-id
+   GOOGLE_CLIENT_SECRET=your-client-secret
+   GOOGLE_REDIRECT_URI=http://localhost:3000/web/api/oauth/googledrive/callback
+   ```
+
+3. **Authenticate via Dashboard:**
+   - Open the web dashboard
+   - Click "Connect with Google Drive"
+   - Authorize the application
+
+### How It Works
+
+- **Automatic Sync**: All markdown files are automatically uploaded to Google Drive
+- **Folder Structure**: Files are organized in a "W2M" folder in Google Drive
+- **Unidirectional**: W2M pushes changes to Drive (no sync from Drive to W2M)
+- **Real-time**: Files are uploaded immediately when messages are categorized
+
+### Storage Location
+
+Files are stored in Google Drive under:
+```
+W2M/
+├── categories/
+│   ├── code.md
+│   ├── notes.md
+│   └── ...
+└── ...
+```
+
+### Dashboard Integration
+
+The web dashboard shows:
+- ✅ Connection status (Service Account or OAuth)
+- ✅ Storage type (Local or Google Drive)
+- ✅ Quick setup instructions
+- ✅ Authentication status
+
+### Troubleshooting
+
+**Files not appearing in your Drive:**
+- Service Account creates files in its own Drive (not visible in your personal Drive)
+- Solution: Share a folder with the Service Account email (see Option 1, step 4)
+
+**Authentication errors:**
+- Verify the JSON file path is correct
+- Check file permissions: `chmod 600 service-account.json`
+- Ensure Google Drive API is enabled in GCP
+
+**See detailed guides:**
+- [`docs/GCP-SERVICE-ACCOUNT-SETUP.md`](docs/GCP-SERVICE-ACCOUNT-SETUP.md) - Service Account setup
+- [`docs/GCP-OAUTH-SETUP.md`](docs/GCP-OAUTH-SETUP.md) - OAuth setup
+
 ## 📁 Project Structure
 
 ```

@@ -45,6 +45,17 @@ const configSchema = z.object({
   WEB_ENABLED: z.coerce.boolean().default(true),
   WEB_PORT: z.coerce.number().default(3000),
   WEB_HOST: z.string().default('0.0.0.0'),
+  
+  // Storage
+  STORAGE_TYPE: z.enum(['local', 'googledrive', 'git']).default('local'),
+  
+  // Google Drive OAuth (para autenticación de usuario)
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_REDIRECT_URI: z.string().optional(),
+  
+  // Google Drive Service Account (más simple, sin OAuth)
+  GOOGLE_SERVICE_ACCOUNT_PATH: z.string().optional(),
 });
 
 export type Config = z.infer<typeof configSchema>;

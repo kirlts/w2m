@@ -92,6 +92,44 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
       </div>
     </div>
 
+    <!-- Google Drive Storage -->
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+      <h2 class="text-xl font-semibold mb-4">☁️ Google Drive Sync</h2>
+      <div id="storage-status" class="mb-4">
+        <p class="text-gray-500">Verificando estado...</p>
+      </div>
+      <div id="storage-actions" class="flex gap-2 mb-4">
+        <!-- Botones se mostrarán dinámicamente según el estado -->
+      </div>
+      <div id="storage-info" class="text-sm text-gray-500 mt-2">
+        <!-- Información adicional se mostrará aquí -->
+      </div>
+      <div id="storage-setup-guide" class="mt-4 p-4 bg-blue-50 rounded-lg hidden">
+        <h3 class="font-semibold mb-2">📖 Guía de Configuración</h3>
+        <div class="text-sm space-y-2">
+          <p><strong>Opción 1: Service Account (Recomendado)</strong></p>
+          <ol class="list-decimal list-inside ml-2 space-y-1">
+            <li>Crea una Service Account en <a href="https://console.cloud.google.com" target="_blank" class="text-blue-600 hover:underline">Google Cloud Console</a></li>
+            <li>Descarga el archivo JSON de credenciales</li>
+            <li>Sube el archivo a: <code class="bg-gray-200 px-1 rounded">./data/googledrive/service-account.json</code></li>
+            <li>Configura en <code class="bg-gray-200 px-1 rounded">.env</code>: <code class="bg-gray-200 px-1 rounded">STORAGE_TYPE=googledrive</code></li>
+            <li>Reinicia W2M</li>
+          </ol>
+          <p class="mt-2"><strong>Opción 2: OAuth</strong></p>
+          <ol class="list-decimal list-inside ml-2 space-y-1">
+            <li>Configura OAuth en Google Cloud Console</li>
+            <li>Agrega las credenciales en <code class="bg-gray-200 px-1 rounded">.env</code></li>
+            <li>Haz clic en "Conectar con Google Drive" abajo</li>
+          </ol>
+          <p class="mt-2 text-xs">
+            📚 Ver guías detalladas: 
+            <a href="https://github.com/your-repo/w2m/blob/main/docs/GCP-SERVICE-ACCOUNT-SETUP.md" target="_blank" class="text-blue-600 hover:underline">Service Account</a> | 
+            <a href="https://github.com/your-repo/w2m/blob/main/docs/GCP-OAUTH-SETUP.md" target="_blank" class="text-blue-600 hover:underline">OAuth</a>
+          </p>
+        </div>
+      </div>
+    </div>
+
     <!-- Grupos Monitoreados -->
     <div class="bg-white rounded-lg shadow p-6 mb-6">
       <div class="flex justify-between items-center mb-4">
@@ -409,6 +447,52 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
     }, 2000);
 
     // ==========================================
+    // Funciones para Google Drive OAuth
+    // ==========================================
+    
+    // Verificar estado de Google Drive al cargar
+    function checkGoogleDriveStatus() {
+      fetch('/web/api/oauth/googledrive/status')
+        .then(res => res.json())
+        .then(data => {
+          const statusEl = document.getElementById('googledrive-status');
+          const connectBtn = document.getElementById('connect-googledrive-btn');
+          const disconnectBtn = document.getElementById('disconnect-googledrive-btn');
+          
+          if (data.authenticated) {
+            statusEl.innerHTML = '<p class="text-green-600 font-medium">✅ Google Drive está conectado</p>';
+            if (connectBtn) connectBtn.classList.add('hidden');
+            if (disconnectBtn) disconnectBtn.classList.remove('hidden');
+          } else {
+            statusEl.innerHTML = '<p class="text-gray-500">❌ Google Drive no está conectado</p>';
+            if (connectBtn) connectBtn.classList.remove('hidden');
+            if (disconnectBtn) disconnectBtn.classList.add('hidden');
+          }
+        })
+        .catch(err => {
+          console.error('Error al verificar estado de Google Drive:', err);
+        });
+    }
+    
+    // Conectar con Google Drive
+    function connectGoogleDrive() {
+      window.location.href = '/web/api/oauth/googledrive/start';
+    }
+    
+    // Desconectar Google Drive
+    function disconnectGoogleDrive() {
+      if (confirm('¿Desconectar Google Drive? Los archivos seguirán guardándose localmente.')) {
+        // TODO: Implementar desconexión (eliminar tokens)
+        alert('Para desconectar, elimina el archivo data/googledrive/token.json');
+        checkGoogleDriveStatus();
+      }
+    }
+    
+    // Verificar estado al cargar y cada 10 segundos
+    checkGoogleDriveStatus();
+    setInterval(checkGoogleDriveStatus, 10000);
+
+    // ==========================================
     // Funciones globales para categorías
     // ==========================================
     
@@ -603,6 +687,9 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
     window.openConfigureFieldsModalFromButton = openConfigureFieldsModalFromButton;
     window.viewCategoryMarkdown = viewCategoryMarkdown;
     window.copyMarkdown = copyMarkdown;
+    window.connectGoogleDrive = connectGoogleDrive;
+    window.showServiceAccountGuide = showServiceAccountGuide;
+    window.showGoogleDriveSetup = showGoogleDriveSetup;
   </script>
 </body>
 </html>`;
