@@ -438,48 +438,89 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
 
     // Cargar estado de Google Drive Storage una sola vez al inicio
     // (No necesita polling - el estado solo cambia cuando se configura Service Account)
-    fetch('/web/api/storage/status')
-      .then(res => res.json())
-      .then(data => {
-        const statusEl = document.getElementById('storage-status');
-        const actionsEl = document.getElementById('storage-actions');
-        const infoEl = document.getElementById('storage-info');
-        
-        if (statusEl) {
-          if (data.configured) {
-            statusEl.innerHTML = \`
-              <p class="text-green-600 font-medium">✅ \${data.message || 'Google Drive configurado'}</p>
-              <p class="text-sm text-gray-500 mt-1">Tipo: \${data.storageType}</p>
-            \`;
-          } else {
-            statusEl.innerHTML = \`
-              <p class="text-yellow-600 font-medium">⚠️ \${data.message || 'Google Drive no configurado'}</p>
-              <p class="text-sm text-gray-500 mt-1">Tipo: \${data.storageType}</p>
-            \`;
+    console.log('[CLIENT-DEBUG] Iniciando carga de estado de Google Drive Storage');
+    const storageStatusEl = document.getElementById('storage-status');
+    console.log('[CLIENT-DEBUG] Elemento storage-status encontrado:', !!storageStatusEl);
+    
+    if (!storageStatusEl) {
+      console.error('[CLIENT-DEBUG] ERROR: Elemento storage-status NO encontrado en DOM');
+    } else {
+      fetch('/web/api/storage/status')
+        .then(res => {
+          console.log('[CLIENT-DEBUG] Respuesta recibida:', res.status, res.statusText);
+          if (!res.ok) {
+            console.error('[CLIENT-DEBUG] Error HTTP:', res.status, res.statusText);
+            throw new Error(\`HTTP \${res.status}: \${res.statusText}\`);
           }
-        }
-        
-        if (infoEl && data.serviceAccountPath) {
-          infoEl.innerHTML = \`<p class="text-xs">Ruta: <code class="bg-gray-100 px-1 rounded">\${data.serviceAccountPath}</code></p>\`;
-        }
-      })
-      .catch(err => {
-        const statusEl = document.getElementById('storage-status');
-        if (statusEl) {
-          statusEl.innerHTML = \`<p class="text-red-500">❌ Error al verificar estado: \${err.message}</p>\`;
-        }
-      });
+          return res.json();
+        })
+        .then(data => {
+          console.log('[CLIENT-DEBUG] Datos recibidos:', JSON.stringify(data));
+          const statusEl = document.getElementById('storage-status');
+          const actionsEl = document.getElementById('storage-actions');
+          const infoEl = document.getElementById('storage-info');
+          
+          console.log('[CLIENT-DEBUG] Elementos DOM:', { statusEl: !!statusEl, actionsEl: !!actionsEl, infoEl: !!infoEl });
+          
+          if (statusEl) {
+            if (data.configured) {
+              console.log('[CLIENT-DEBUG] Actualizando estado: CONFIGURADO');
+              statusEl.innerHTML = \`
+                <p class="text-green-600 font-medium">✅ \${data.message || 'Google Drive configurado'}</p>
+                <p class="text-sm text-gray-500 mt-1">Tipo: \${data.storageType}</p>
+              \`;
+            } else {
+              console.log('[CLIENT-DEBUG] Actualizando estado: NO CONFIGURADO');
+              statusEl.innerHTML = \`
+                <p class="text-yellow-600 font-medium">⚠️ \${data.message || 'Google Drive no configurado'}</p>
+                <p class="text-sm text-gray-500 mt-1">Tipo: \${data.storageType}</p>
+              \`;
+            }
+            console.log('[CLIENT-DEBUG] Estado actualizado correctamente');
+          } else {
+            console.error('[CLIENT-DEBUG] ERROR: statusEl es null después de recibir datos');
+          }
+          
+          if (infoEl && data.serviceAccountPath) {
+            infoEl.innerHTML = \`<p class="text-xs">Ruta: <code class="bg-gray-100 px-1 rounded">\${data.serviceAccountPath}</code></p>\`;
+          }
+        })
+        .catch(err => {
+          console.error('[CLIENT-DEBUG] Error en fetch:', err);
+          const statusEl = document.getElementById('storage-status');
+          if (statusEl) {
+            statusEl.innerHTML = \`<p class="text-red-500">❌ Error al verificar estado: \${err.message}</p>\`;
+          } else {
+            console.error('[CLIENT-DEBUG] ERROR: No se pudo actualizar estado porque statusEl es null');
+          }
+        });
+    }
 
     // Cargar grupos disponibles cuando se abre el modal
     function loadAvailableGroups() {
+      console.log('[CLIENT-DEBUG] loadAvailableGroups() llamada');
       const groupsListEl = document.getElementById('available-groups-list');
-      if (!groupsListEl) return;
+      console.log('[CLIENT-DEBUG] Elemento available-groups-list encontrado:', !!groupsListEl);
+      
+      if (!groupsListEl) {
+        console.error('[CLIENT-DEBUG] ERROR: Elemento available-groups-list NO encontrado');
+        return;
+      }
 
       groupsListEl.innerHTML = '<p class="text-gray-500">Cargando grupos disponibles...</p>';
+      console.log('[CLIENT-DEBUG] Iniciando fetch a /web/api/groups/available');
 
       fetch('/web/api/groups/available')
-        .then(res => res.json())
+        .then(res => {
+          console.log('[CLIENT-DEBUG] Respuesta recibida de groups/available:', res.status, res.statusText);
+          if (!res.ok) {
+            console.error('[CLIENT-DEBUG] Error HTTP:', res.status, res.statusText);
+            throw new Error(\`HTTP \${res.status}: \${res.statusText}\`);
+          }
+          return res.json();
+        })
         .then(data => {
+          console.log('[CLIENT-DEBUG] Datos recibidos de groups/available:', JSON.stringify(data));
           if (data.error) {
             groupsListEl.innerHTML = \`
               <div class="bg-yellow-50 border border-yellow-200 rounded p-3 mb-2">
@@ -517,8 +558,10 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
           });
           html += '</div>';
           groupsListEl.innerHTML = html;
+          console.log('[CLIENT-DEBUG] Grupos renderizados correctamente');
         })
         .catch(err => {
+          console.error('[CLIENT-DEBUG] Error al cargar grupos:', err);
           groupsListEl.innerHTML = \`
             <div class="bg-red-50 border border-red-200 rounded p-3">
               <p class="text-red-800 text-sm">❌ Error al cargar grupos: \${err.message}</p>
@@ -793,9 +836,15 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
     }
     
     // Ejecutar inmediatamente si el DOM ya está listo, o esperar
+    console.log('[CLIENT-DEBUG] Script iniciado, document.readyState:', document.readyState);
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initDashboard);
+      console.log('[CLIENT-DEBUG] DOM aún cargando, esperando DOMContentLoaded');
+      document.addEventListener('DOMContentLoaded', () => {
+        console.log('[CLIENT-DEBUG] DOMContentLoaded disparado, ejecutando initDashboard');
+        initDashboard();
+      });
     } else {
+      console.log('[CLIENT-DEBUG] DOM ya listo, ejecutando initDashboard inmediatamente');
       initDashboard();
     }
   </script>
