@@ -5,10 +5,14 @@ import { createIngestor } from './core/ingestor/factory.js';
 import { W2MCLI } from './cli/index.js';
 import { logger } from './utils/logger.js';
 import { GroupManager } from './core/groups/index.js';
+import { CategoryManager } from './core/categories/index.js';
 
-// Inicializar gestor de grupos
+// Inicializar gestores
 const groupManager = new GroupManager();
 await groupManager.load();
+
+const categoryManager = new CategoryManager();
+await categoryManager.load();
 
 // Crear ingestor usando factory (carga plugin según configuración)
 const ingestor = await createIngestor(groupManager);
@@ -30,7 +34,7 @@ process.on('SIGINT', async () => {
 // Inicializar ingestor y CLI
 ingestor.initialize().then(() => {
   // Iniciar CLI interactivo
-  const cli = new W2MCLI(ingestor, groupManager);
+  const cli = new W2MCLI(ingestor, groupManager, categoryManager);
   cli.start();
 
   // Intentar conectar automáticamente si hay credenciales guardadas (silenciosamente)

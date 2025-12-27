@@ -2,16 +2,23 @@
 import readline from 'readline';
 import { IngestorInterface } from '../core/ingestor/interface.js';
 import { GroupManager } from '../core/groups/index.js';
+import { CategoryManager, CategoryField } from '../core/categories/index.js';
+import { CategoryWriter } from '../core/categories/writer.js';
 import { logger } from '../utils/logger.js';
 
 export class W2MCLI {
   private rl: readline.Interface;
   private ingestor: IngestorInterface;
   private groupManager: GroupManager;
+  private categoryManager: CategoryManager;
+  private categoryWriter: CategoryWriter;
+  private isInSubMenu: boolean = false; // Flag para indicar si estamos en un submenú
 
-  constructor(ingestor: IngestorInterface, groupManager: GroupManager) {
+  constructor(ingestor: IngestorInterface, groupManager: GroupManager, categoryManager: CategoryManager) {
     this.ingestor = ingestor;
     this.groupManager = groupManager;
+    this.categoryManager = categoryManager;
+    this.categoryWriter = new CategoryWriter(categoryManager);
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -73,7 +80,10 @@ export class W2MCLI {
    * Configurar handler para mostrar mensajes inmediatamente
    */
   private setupMessageHandler(): void {
-    this.ingestor.onMessage((message) => {
+    this.ingestor.onMessage(async (message) => {
+      // Procesar categorías automáticamente
+      await this.categoryWriter.processMessage(message);
+      // Mostrar mensaje en consola
       this.displayMessageImmediately(message);
     });
   }
@@ -112,13 +122,19 @@ export class W2MCLI {
   private showMenu(): void {
     const status = this.ingestor.isConnected() ? '✅ Conectado' : '❌ Desconectado';
     const groupCount = this.groupManager.getAllGroups().length;
+    const categoryCount = this.categoryManager.getAllCategories().length;
     console.log(`\n📱 W2M - WhatsApp to Markdown [${status}]`);
     console.log('─────────────────────────────────────────────────────');
-    console.log(`1) QR  |  2) Estado  |  3) Desconectar  |  4) Grupos (${groupCount})  |  5) Salir`);
+    console.log(`1) QR  |  2) Estado  |  3) Desconectar  |  4) Grupos (${groupCount})  |  5) Categorías (${categoryCount})  |  6) Salir`);
     console.log('─────────────────────────────────────────────────────');
   }
 
   private prompt(): void {
+    // Solo procesar entrada si no estamos en un submenú
+    if (this.isInSubMenu) {
+      return;
+    }
+    
     this.rl.question('> ', (answer) => {
       const trimmed = answer.trim();
       if (trimmed) {
@@ -145,10 +161,13 @@ export class W2MCLI {
         this.manageGroups();
         break;
       case '5':
+        this.manageCategories();
+        break;
+      case '6':
         this.exit();
         break;
       default:
-        console.log('❌ Opción inválida. Por favor selecciona 1-5.\n');
+        console.log('❌ Opción inválida. Por favor selecciona 1-6.\n');
         this.prompt();
     }
   }
@@ -220,6 +239,7 @@ export class W2MCLI {
 
   private async manageGroups(): Promise<void> {
     process.stdout.write('\r' + ' '.repeat(80) + '\r');
+    this.isInSubMenu = true;
     
     const monitoredGroups = this.groupManager.getAllGroups();
     
@@ -251,11 +271,14 @@ export class W2MCLI {
       } else if (trimmed === '2') {
         await this.removeGroup();
       } else if (trimmed === '3') {
+        this.isInSubMenu = false;
         this.showMenu();
         this.prompt();
         return;
       } else {
         console.log('❌ Opción inválida. Por favor selecciona 1-3.\n');
+        this.isInSubMenu = false;
+        this.showMenu();
         this.prompt();
         return;
       }
@@ -304,6 +327,12 @@ export class W2MCLI {
         }
 
         const selectedGroup = groups[groupIndex];
+        if (!selectedGroup) {
+          console.log('❌ Grupo no encontrado.\n');
+          this.showMenu();
+          this.prompt();
+          return;
+        }
         const groupName = selectedGroup.name;
         
         // Verificar si ya está monitoreado
@@ -325,6 +354,7 @@ export class W2MCLI {
       });
     } catch (error) {
       console.log('\n⚠️  No estás conectado. Conecta primero con la opción 1.\n');
+      this.isInSubMenu = false;
       this.showMenu();
       this.prompt();
       return;
@@ -354,6 +384,7 @@ export class W2MCLI {
       process.stdout.write('\r' + ' '.repeat(80) + '\r');
       
       if (!trimmed) {
+        this.isInSubMenu = false;
         this.showMenu();
         this.prompt();
         return;
@@ -363,12 +394,20 @@ export class W2MCLI {
       
       if (isNaN(groupIndex) || groupIndex < 0 || groupIndex >= monitoredGroups.length) {
         console.log('❌ Número inválido. Por favor selecciona un número de la lista.\n');
+        this.isInSubMenu = false;
         this.showMenu();
         this.prompt();
         return;
       }
 
       const selectedGroup = monitoredGroups[groupIndex];
+      if (!selectedGroup) {
+        console.log('❌ Grupo no encontrado.\n');
+        this.isInSubMenu = false;
+        this.showMenu();
+        this.prompt();
+        return;
+      }
       const groupName = selectedGroup.name;
 
       const removed = await this.groupManager.removeGroup(groupName);
@@ -379,8 +418,306 @@ export class W2MCLI {
         console.log(`❌ Error al remover el grupo "${groupName}".\n`);
       }
       
+      this.isInSubMenu = false;
       this.showMenu();
       this.prompt();
+    });
+  }
+
+  private async manageCategories(): Promise<void> {
+    process.stdout.write('\r' + ' '.repeat(80) + '\r');
+    this.isInSubMenu = true;
+    
+    const categories = this.categoryManager.getAllCategories();
+    
+    console.log('\n═══════════════════════════════════════════════════════');
+    console.log('📁 Gestión de Categorías');
+    console.log('═══════════════════════════════════════════════════════\n');
+    
+    if (categories.length === 0) {
+      console.log('⚪ No hay categorías configuradas.\n');
+    } else {
+      console.log('Categorías:');
+      categories.forEach((category, index) => {
+        console.log(`${index + 1}. ${category.name}${category.description ? ` - ${category.description}` : ''}`);
+        console.log(`   Campos: ${category.enabledFields.join(', ')}\n`);
+      });
+    }
+    
+    console.log('Opciones:');
+    console.log('  1) Crear categoría');
+    console.log('  2) Eliminar categoría');
+    console.log('  3) Configurar campos de categoría');
+    console.log('  4) Volver al menú principal\n');
+    
+    this.rl.question('Selecciona una opción (1-4): ', async (answer) => {
+      const trimmed = answer.trim();
+      process.stdout.write('\r' + ' '.repeat(80) + '\r');
+      
+      if (trimmed === '1') {
+        await this.createCategory();
+      } else if (trimmed === '2') {
+        await this.removeCategory();
+      } else if (trimmed === '3') {
+        await this.configureCategoryFields();
+      } else if (trimmed === '4') {
+        this.isInSubMenu = false;
+        this.showMenu();
+        this.prompt();
+        return;
+      } else {
+        console.log('❌ Opción inválida. Por favor selecciona 1-4.\n');
+        this.isInSubMenu = false;
+        this.showMenu();
+        this.prompt();
+        return;
+      }
+    });
+  }
+
+  private async createCategory(): Promise<void> {
+    this.rl.question('\nNombre de la categoría (ej: CODIGO): ', async (name) => {
+      const trimmedName = name.trim();
+      process.stdout.write('\r' + ' '.repeat(80) + '\r');
+      
+      if (!trimmedName) {
+        this.isInSubMenu = false;
+        this.showMenu();
+        this.prompt();
+        return;
+      }
+
+      // Validar formato de nombre (solo letras, números, guiones, guiones bajos)
+      if (!/^[A-Za-z0-9_-]+$/.test(trimmedName)) {
+        console.log('❌ El nombre solo puede contener letras, números, guiones y guiones bajos.\n');
+        this.isInSubMenu = false;
+        this.showMenu();
+        this.prompt();
+        return;
+      }
+
+      // Seleccionar campos
+      const allFields: CategoryField[] = ['AUTOR', 'HORA', 'FECHA', 'CONTENIDO'];
+      console.log('\nCampos disponibles:');
+      allFields.forEach((field, index) => {
+        console.log(`${index + 1}. ${field}`);
+      });
+      console.log('');
+
+      this.rl.question('Ingresa los números de los campos a habilitar separados por comas (1=AUTOR, 2=HORA, 3=FECHA, 4=CONTENIDO): ', async (fieldsAnswer) => {
+        process.stdout.write('\r' + ' '.repeat(80) + '\r');
+        
+        const fieldNumbers = fieldsAnswer.split(',').map(n => parseInt(n.trim(), 10) - 1).filter(n => !isNaN(n) && n >= 0 && n < allFields.length);
+        
+        if (fieldNumbers.length === 0) {
+          console.log('❌ Debes seleccionar al menos un campo válido.\n');
+          this.showMenu();
+          this.prompt();
+          return;
+        }
+
+        const selectedFields = fieldNumbers.map(n => allFields[n]).filter((f): f is CategoryField => f !== undefined);
+        
+        // CONTENIDO siempre debe estar
+        if (!selectedFields.includes('CONTENIDO')) {
+          selectedFields.push('CONTENIDO');
+        }
+
+        // Descripción (opcional)
+        this.rl.question('Descripción (opcional, Enter para omitir): ', async (description) => {
+          process.stdout.write('\r' + ' '.repeat(80) + '\r');
+          const trimmedDesc = description.trim() || undefined;
+          
+          const added = await this.categoryManager.addCategory(trimmedName, trimmedDesc, selectedFields);
+          
+          if (added) {
+            console.log(`✅ Categoría "${trimmedName}" creada exitosamente.\n`);
+          } else {
+            console.log(`⚠️  La categoría "${trimmedName}" ya existe.\n`);
+          }
+          
+          this.isInSubMenu = false;
+          this.showMenu();
+          this.prompt();
+        });
+      });
+    });
+  }
+
+  private async removeCategory(): Promise<void> {
+    const categories = this.categoryManager.getAllCategories();
+    
+    if (categories.length === 0) {
+      console.log('⚪ No hay categorías para eliminar.\n');
+      this.isInSubMenu = false;
+      this.showMenu();
+      this.prompt();
+      return;
+    }
+
+    console.log('\n═══════════════════════════════════════════════════════');
+    console.log('📋 Categorías Disponibles:');
+    console.log('═══════════════════════════════════════════════════════\n');
+    categories.forEach((category, index) => {
+      console.log(`${index + 1}. ${category.name}${category.description ? ` - ${category.description}` : ''}`);
+    });
+    console.log('');
+
+    this.rl.question('Selecciona el número de la categoría a eliminar (o Enter para cancelar): ', async (answer) => {
+      const trimmed = answer.trim();
+      process.stdout.write('\r' + ' '.repeat(80) + '\r');
+      
+      if (!trimmed) {
+        this.showMenu();
+        this.prompt();
+        return;
+      }
+
+      const categoryIndex = parseInt(trimmed, 10) - 1;
+      
+      if (isNaN(categoryIndex) || categoryIndex < 0 || categoryIndex >= categories.length) {
+        console.log('❌ Número inválido. Por favor selecciona un número de la lista.\n');
+        this.showMenu();
+        this.prompt();
+        return;
+      }
+
+      const selectedCategory = categories[categoryIndex];
+      if (!selectedCategory) {
+        console.log('❌ Categoría no encontrada.\n');
+        this.showMenu();
+        this.prompt();
+        return;
+      }
+      const categoryName = selectedCategory.name;
+
+      // Preguntar si también quiere eliminar el archivo markdown
+      this.rl.question('¿Deseas eliminar también el archivo markdown asociado? (s/n): ', async (deleteFileAnswer) => {
+        process.stdout.write('\r' + ' '.repeat(80) + '\r');
+        const deleteFile = deleteFileAnswer.trim().toLowerCase() === 's' || deleteFileAnswer.trim().toLowerCase() === 'si';
+
+        const removed = await this.categoryManager.removeCategory(categoryName);
+        
+        if (!removed) {
+          console.log(`❌ Error al eliminar la categoría "${categoryName}".\n`);
+          this.isInSubMenu = false;
+          this.showMenu();
+          this.prompt();
+          return;
+        }
+
+        console.log(`✅ Categoría "${categoryName}" eliminada exitosamente.`);
+
+        if (deleteFile) {
+          const fileDeleted = await this.categoryManager.deleteCategoryMarkdown(categoryName);
+          if (fileDeleted) {
+            console.log(`✅ Archivo markdown de la categoría "${categoryName}" también fue eliminado.\n`);
+          } else {
+            console.log(`⚠️  No se pudo eliminar el archivo markdown (puede que no exista).\n`);
+          }
+        } else {
+          console.log(`ℹ️  El archivo markdown se mantiene en el sistema.\n`);
+        }
+        
+        this.isInSubMenu = false;
+        this.showMenu();
+        this.prompt();
+      });
+    });
+  }
+
+  private async configureCategoryFields(): Promise<void> {
+    const categories = this.categoryManager.getAllCategories();
+    
+    if (categories.length === 0) {
+      console.log('⚪ No hay categorías para configurar.\n');
+      this.isInSubMenu = false;
+      this.showMenu();
+      this.prompt();
+      return;
+    }
+
+    console.log('\n═══════════════════════════════════════════════════════');
+    console.log('📋 Categorías Disponibles:');
+    console.log('═══════════════════════════════════════════════════════\n');
+    categories.forEach((category, index) => {
+      console.log(`${index + 1}. ${category.name}${category.description ? ` - ${category.description}` : ''}`);
+      console.log(`   Campos actuales: ${category.enabledFields.join(', ')}\n`);
+    });
+    console.log('');
+
+    this.rl.question('Selecciona el número de la categoría a configurar (o Enter para cancelar): ', async (answer) => {
+      const trimmed = answer.trim();
+      process.stdout.write('\r' + ' '.repeat(80) + '\r');
+      
+      if (!trimmed) {
+        this.isInSubMenu = false;
+        this.showMenu();
+        this.prompt();
+        return;
+      }
+
+      const categoryIndex = parseInt(trimmed, 10) - 1;
+      
+      if (isNaN(categoryIndex) || categoryIndex < 0 || categoryIndex >= categories.length) {
+        console.log('❌ Número inválido. Por favor selecciona un número de la lista.\n');
+        this.isInSubMenu = false;
+        this.showMenu();
+        this.prompt();
+        return;
+      }
+
+      const selectedCategory = categories[categoryIndex];
+      if (!selectedCategory) {
+        console.log('❌ Categoría no encontrada.\n');
+        this.isInSubMenu = false;
+        this.showMenu();
+        this.prompt();
+        return;
+      }
+      const allFields: CategoryField[] = ['AUTOR', 'HORA', 'FECHA', 'CONTENIDO'];
+      
+      console.log('\nCampos disponibles:');
+      allFields.forEach((field, index) => {
+        const enabled = selectedCategory.enabledFields.includes(field);
+        console.log(`${index + 1}. ${field} ${enabled ? '✅' : '⚪'}`);
+      });
+      console.log('');
+
+      this.rl.question('Ingresa los números de los campos a habilitar separados por comas (1=AUTOR, 2=HORA, 3=FECHA, 4=CONTENIDO): ', async (fieldsAnswer) => {
+        process.stdout.write('\r' + ' '.repeat(80) + '\r');
+        
+        const fieldNumbers = fieldsAnswer.split(',').map(n => parseInt(n.trim(), 10) - 1).filter(n => !isNaN(n) && n >= 0 && n < allFields.length);
+        
+        if (fieldNumbers.length === 0) {
+          console.log('❌ Debes seleccionar al menos un campo válido.\n');
+          this.isInSubMenu = false;
+          this.showMenu();
+          this.prompt();
+          return;
+        }
+
+        const selectedFields = fieldNumbers.map(n => allFields[n]).filter((f): f is CategoryField => f !== undefined);
+        
+        // CONTENIDO siempre debe estar
+        if (!selectedFields.includes('CONTENIDO')) {
+          selectedFields.push('CONTENIDO');
+        }
+
+        const updated = await this.categoryManager.updateCategory(selectedCategory.name, {
+          enabledFields: selectedFields,
+        });
+        
+        if (updated) {
+          console.log(`✅ Campos de la categoría "${selectedCategory.name}" actualizados.\n`);
+        } else {
+          console.log(`❌ Error al actualizar la categoría.\n`);
+        }
+        
+        this.isInSubMenu = false;
+        this.showMenu();
+        this.prompt();
+      });
     });
   }
 
