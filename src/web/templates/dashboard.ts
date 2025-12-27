@@ -611,31 +611,23 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
 
     // Cargar grupos disponibles cuando se abre el modal
     function loadAvailableGroups() {
-      console.log('[CLIENT-DEBUG] loadAvailableGroups() llamada');
       const groupsListEl = document.getElementById('available-groups-list');
-      console.log('[CLIENT-DEBUG] Elemento available-groups-list encontrado:', !!groupsListEl);
       
       if (!groupsListEl) {
-        console.error('[CLIENT-DEBUG] ERROR: Elemento available-groups-list NO encontrado');
         return;
       }
 
       groupsListEl.innerHTML = '<p class="text-gray-500">Cargando grupos disponibles...</p>';
-      console.log('[CLIENT-DEBUG] Iniciando fetch a /web/api/groups/available');
 
       fetch('/web/api/groups/available')
         .then(res => {
-          console.log('[CLIENT-DEBUG] Respuesta recibida de groups/available:', res.status, res.statusText);
           if (!res.ok) {
-            console.error('[CLIENT-DEBUG] Error HTTP:', res.status, res.statusText);
             throw new Error('HTTP ' + res.status + ': ' + res.statusText);
           }
           return res.json();
         })
         .then(data => {
-          console.log('[CLIENT-DEBUG] Datos recibidos de groups/available:', JSON.stringify(data));
           if (data.error) {
-            console.log('[CLIENT-DEBUG] Error recibido:', data.error);
             groupsListEl.innerHTML = '<div class="bg-yellow-50 border border-yellow-200 rounded p-3 mb-2"><p class="text-yellow-800 text-sm">⚠️ ' + data.error + '</p></div>';
             return;
           }
@@ -665,10 +657,9 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
           });
           html += '</div>';
           groupsListEl.innerHTML = html;
-          console.log('[CLIENT-DEBUG] Grupos renderizados correctamente');
         })
         .catch(err => {
-          console.error('[CLIENT-DEBUG] Error al cargar grupos:', err);
+          console.error('Error al cargar grupos:', err);
           const errorMsg = err && err.message ? err.message : 'Error desconocido';
           groupsListEl.innerHTML = '<div class="bg-red-50 border border-red-200 rounded p-3"><p class="text-red-800 text-sm">❌ Error al cargar grupos: ' + errorMsg + '</p></div>';
         });
@@ -974,15 +965,9 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
     }
     
     // Ejecutar inmediatamente si el DOM ya está listo, o esperar
-    console.log('[CLIENT-DEBUG] Script iniciado, document.readyState:', document.readyState);
     if (document.readyState === 'loading') {
-      console.log('[CLIENT-DEBUG] DOM aún cargando, esperando DOMContentLoaded');
-      document.addEventListener('DOMContentLoaded', () => {
-        console.log('[CLIENT-DEBUG] DOMContentLoaded disparado, ejecutando initDashboard');
-        initDashboard();
-      });
+      document.addEventListener('DOMContentLoaded', initDashboard);
     } else {
-      console.log('[CLIENT-DEBUG] DOM ya listo, ejecutando initDashboard inmediatamente');
       initDashboard();
     }
   </script>

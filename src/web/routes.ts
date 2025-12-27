@@ -78,27 +78,18 @@ export function setupRoutes(app: Hono, context: WebServerContext): void {
 
   // API: Listar grupos disponibles (JSON)
   app.get('/web/api/groups/available', async (c) => {
-    logger.info({}, '🔍 [DEBUG] /web/api/groups/available - Request recibido');
     try {
       const isConnected = ingestor.isConnected();
-      logger.info({ isConnected }, '🔍 [DEBUG] Estado de conexión verificado');
       
-      // Verificar si hay conexión antes de intentar listar grupos
       if (!isConnected) {
-        logger.warn({}, '🔍 [DEBUG] No hay conexión activa, retornando error');
         return c.json({ 
           error: 'No hay conexión activa. Conecta primero a WhatsApp.',
           groups: []
-        }, 200); // 200 para que el frontend pueda manejar el error
+        }, 200);
       }
 
-      logger.info({}, '🔍 [DEBUG] Llamando a ingestor.listGroups()');
       const groups = await ingestor.listGroups();
-      logger.info({ count: groups.length }, '🔍 [DEBUG] Grupos obtenidos del ingestor');
-      
       const monitoredGroups = groupManager.getAllGroups();
-      logger.info({ monitoredCount: monitoredGroups.length }, '🔍 [DEBUG] Grupos monitoreados obtenidos');
-      
       const monitoredNames = new Set(monitoredGroups.map(g => g.name.toLowerCase()));
       
       const groupsWithStatus = groups.map(group => ({
@@ -106,14 +97,13 @@ export function setupRoutes(app: Hono, context: WebServerContext): void {
         isMonitored: monitoredNames.has(group.name.toLowerCase()),
       }));
       
-      logger.info({ totalGroups: groupsWithStatus.length }, '🔍 [DEBUG] Retornando grupos con estado');
       return c.json({ groups: groupsWithStatus });
     } catch (error: any) {
-      logger.error({ error: error.message, stack: error.stack }, '❌ [DEBUG] Error al listar grupos disponibles');
+      logger.error({ error: error.message }, 'Error al listar grupos disponibles');
       return c.json({ 
         error: error.message || 'Error al obtener grupos',
         groups: []
-      }, 200); // 200 para que el frontend pueda manejar el error
+      }, 200);
     }
   });
 

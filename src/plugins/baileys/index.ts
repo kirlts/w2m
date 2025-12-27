@@ -213,7 +213,6 @@ export class BaileysIngestor implements IngestorInterface {
     this.socket.ev.on('messages.upsert', async (m) => {
       const messages = m.messages;
       
-      logger.debug({ messageCount: messages.length, isInitialSync: this.isInitialSync }, '📨 Mensajes recibidos');
       
       for (const message of messages) {
         const remoteJid = message.key?.remoteJid;
@@ -229,17 +228,10 @@ export class BaileysIngestor implements IngestorInterface {
           (messageAge !== null && messageAge > 120);
         
         if (isHistoryMessage) {
-          logger.debug({ 
-            isInitialSync: this.isInitialSync, 
-            hasTimestamp: !!messageTimestamp,
-            age: messageAge !== null ? messageAge : 'N/A',
-            remoteJid 
-          }, '⏭️ Mensaje histórico ignorado');
           continue;
         }
         
         if (!remoteJid || !remoteJid.endsWith('@g.us')) {
-          logger.debug({ remoteJid }, '⏭️ Mensaje no es de grupo, ignorado');
           continue;
         }
 
@@ -252,14 +244,9 @@ export class BaileysIngestor implements IngestorInterface {
           const groupMetadata = await this.socket.groupMetadata(remoteJid);
           const groupName = groupMetadata.subject || 'Sin nombre';
           
-          logger.debug({ groupName, remoteJid }, '📨 Procesando mensaje de grupo');
-          
           if (!this.groupManager.isMonitored(groupName)) {
-            logger.debug({ groupName }, '⏭️ Grupo no monitoreado, ignorando mensaje');
             continue;
           }
-          
-          logger.debug({ groupName }, '✅ Grupo monitoreado, procesando mensaje');
           const messageContent = this.extractMessageContent(message);
           
           const senderJid = fromMe 
@@ -296,13 +283,6 @@ export class BaileysIngestor implements IngestorInterface {
             content: messageContent || '[Mensaje sin texto]',
           };
           
-          logger.debug({ 
-            group: messageData.group, 
-            sender: messageData.sender,
-            contentLength: messageData.content.length,
-            callbackCount: this.messageCallbacks.size
-          }, '📤 Enviando mensaje a callbacks');
-          
           this.messageCallbacks.forEach((callback) => {
             try {
               callback(messageData);
@@ -310,8 +290,6 @@ export class BaileysIngestor implements IngestorInterface {
               logger.error({ error, stack: (error as any)?.stack }, '❌ Error en callback de mensaje');
             }
           });
-          
-          logger.debug({ group: messageData.group }, '✅ Mensaje procesado correctamente');
         } catch (error) {
           logger.error({ error, remoteJid, stack: (error as any)?.stack }, '❌ Error al procesar mensaje del grupo');
         }
