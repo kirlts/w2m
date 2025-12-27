@@ -533,7 +533,7 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
           }
 
           let html = '<div class="space-y-2">';
-          data.groups.forEach((group: any) => {
+          data.groups.forEach(function(group) {
             const isMonitored = group.isMonitored || false;
             html += \`
               <div class="flex items-center justify-between p-3 border rounded \${isMonitored ? 'bg-gray-100' : ''}">
@@ -562,7 +562,7 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
     }
 
     // Función para agregar grupo
-    function addGroup(name: string, jid: string) {
+    function addGroup(name, jid) {
       fetch('/web/api/groups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -601,7 +601,7 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
       const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
           if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-            const target = mutation.target as HTMLElement;
+            const target = mutation.target;
             if (!target.classList.contains('hidden')) {
               loadAvailableGroups();
             }
