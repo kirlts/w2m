@@ -124,10 +124,10 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
       </div>
     </div>
 
-    <!-- Grupos Monitoreados -->
-    <div class="bg-white rounded-lg shadow p-6 mb-6">
-      <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-semibold">Grupos Monitoreados (${groups.length})</h2>
+            <!-- Grupos Monitoreados -->
+            <div class="bg-white rounded-lg shadow p-6 mb-6">
+              <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Grupos Monitoreados (<span id="groups-count">${groups.length}</span>)</h2>
         <button 
           onclick="document.getElementById('add-group-modal').classList.remove('hidden')"
           class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
@@ -158,10 +158,10 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
       </div>
     </div>
 
-    <!-- Categorías -->
-    <div class="bg-white rounded-lg shadow p-6 mb-6">
-      <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-semibold">Categorías (${categories.length})</h2>
+            <!-- Categorías -->
+            <div class="bg-white rounded-lg shadow p-6 mb-6">
+              <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Categorías (<span id="categories-count">${categories.length}</span>)</h2>
         <button 
           onclick="document.getElementById('add-category-modal').classList.remove('hidden')"
           class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
@@ -189,7 +189,7 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
               type="text" 
               name="name" 
               required 
-              pattern="[A-Za-z0-9_-]+"
+              pattern="[A-Za-z0-9_]+"
               class="w-full border rounded px-3 py-2"
               placeholder="ej: CODIGO"
             />
@@ -575,6 +575,8 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
             document.getElementById('add-group-modal')?.classList.add('hidden');
             // Recargar lista de grupos monitoreados
             htmx.trigger('#groups-list', 'refresh');
+            // Actualizar contador
+            updateGroupsCount();
             // Recargar grupos disponibles
             loadAvailableGroups();
           } else {
@@ -611,9 +613,39 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
       observer.observe(addGroupModal, { attributes: true, attributeFilter: ['class'] });
     }
 
+    // Función para actualizar contador de grupos
+    function updateGroupsCount() {
+      fetch('/web/api/groups')
+        .then(function(res) { return res.text(); })
+        .then(function(html) {
+          const countEl = document.getElementById('groups-count');
+          if (countEl) {
+            // Contar elementos li en el HTML
+            const matches = html.match(/<li/g);
+            countEl.textContent = matches ? matches.length : '0';
+          }
+        });
+    }
+
+    // Función para actualizar contador de categorías
+    function updateCategoriesCount() {
+      fetch('/web/api/categories')
+        .then(function(res) { return res.text(); })
+        .then(function(html) {
+          const countEl = document.getElementById('categories-count');
+          if (countEl) {
+            // Contar elementos li en el HTML
+            const matches = html.match(/<li/g);
+            countEl.textContent = matches ? matches.length : '0';
+          }
+        });
+    }
+
     // Exponer funciones globalmente
     window.addGroup = addGroup;
     window.loadAvailableGroups = loadAvailableGroups;
+    window.updateGroupsCount = updateGroupsCount;
+    window.updateCategoriesCount = updateCategoriesCount;
 
 
     // ==========================================
@@ -649,6 +681,8 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
             document.getElementById('add-category-modal').classList.add('hidden');
             event.target.reset();
             htmx.trigger('#categories-list', 'refresh');
+            // Actualizar contador
+            updateCategoriesCount();
           } else {
             alert('Error: ' + (d.error || 'Error desconocido'));
           }
