@@ -171,9 +171,11 @@ export class CategoryManager {
     // Buscar categoría (case-insensitive)
     const category = this.categories.get(potentialCategory.toLowerCase());
     if (!category) {
+      logger.debug({ potentialCategory, availableCategories: Array.from(this.categories.keys()) }, 'Categoría no encontrada en mensaje');
       return null;
     }
 
+    logger.debug({ categoryName: category.name, contentLength: content.length }, 'Categoría detectada en mensaje');
     return {
       categoryName: category.name,
       content: content,

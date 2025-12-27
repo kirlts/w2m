@@ -34,6 +34,7 @@ export class CategoryWriter {
 
     const category = this.categoryManager.getCategory(detected.categoryName);
     if (!category) {
+      logger.warn({ categoryName: detected.categoryName }, 'Categoría detectada pero no encontrada en configuración');
       return false;
     }
 
@@ -51,8 +52,14 @@ export class CategoryWriter {
       timestamp,
     };
 
-    await this.appendToCategoryFile(category, categorizedMessage);
-    return true;
+    try {
+      await this.appendToCategoryFile(category, categorizedMessage);
+      logger.info({ category: category.name, content: detected.content.substring(0, 50) }, 'Mensaje categorizado guardado exitosamente');
+      return true;
+    } catch (error) {
+      logger.error({ error, category: category.name, filePath: this.categoryManager.getCategoryMarkdownPath(category.name) }, 'Error al guardar mensaje categorizado');
+      return false;
+    }
   }
 
   /**
@@ -102,8 +109,13 @@ export class CategoryWriter {
     const content = this.generateMarkdownContent(header, category, existingMessages);
     
     // Escribir archivo
-    await writeFile(filePath, content, 'utf-8');
-    logger.debug({ category: category.name, filePath }, 'Mensaje categorizado guardado');
+    try {
+      await writeFile(filePath, content, 'utf-8');
+      logger.info({ category: category.name, filePath, messageCount: existingMessages.length }, 'Archivo markdown actualizado exitosamente');
+    } catch (error) {
+      logger.error({ error, category: category.name, filePath }, 'Error al escribir archivo markdown');
+      throw error;
+    }
   }
 
   /**
