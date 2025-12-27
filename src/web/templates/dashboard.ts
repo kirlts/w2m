@@ -349,40 +349,37 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
     const logsEventSource = new EventSource('/web/api/logs/stream');
     
     // Esperar a que el DOM esté listo
-    document.addEventListener('DOMContentLoaded', function() {
+    function initDashboard() {
       const logsContainer = document.getElementById('logs-container');
       
-      if (!logsContainer) {
-        console.error('logs-container no encontrado');
-        return;
-      }
-      
-      logsEventSource.addEventListener('log', (e) => {
+      if (logsContainer) {
+        logsEventSource.addEventListener('log', (e) => {
       const data = JSON.parse(e.data);
       const logEntry = document.createElement('div');
       logEntry.className = 'log-entry';
       logEntry.textContent = \`[\${new Date(data.timestamp).toLocaleTimeString()}] \${data.message}\`;
       logsContainer.appendChild(logEntry);
-      logsContainer.scrollTop = logsContainer.scrollHeight;
-    });
+          logsContainer.scrollTop = logsContainer.scrollHeight;
+        });
 
-    logsEventSource.addEventListener('connected', (e) => {
-      const data = JSON.parse(e.data);
-      const logEntry = document.createElement('div');
-      logEntry.className = 'log-entry text-green-500';
-      logEntry.textContent = data.message;
-      logsContainer.appendChild(logEntry);
-    });
+        logsEventSource.addEventListener('connected', (e) => {
+          const data = JSON.parse(e.data);
+          const logEntry = document.createElement('div');
+          logEntry.className = 'log-entry text-green-500';
+          logEntry.textContent = data.message;
+          logsContainer.appendChild(logEntry);
+        });
 
-    // SSE para mensajes de grupos
-    logsEventSource.addEventListener('message', (e) => {
-      const data = JSON.parse(e.data);
-      const msgEntry = document.createElement('div');
-      msgEntry.className = 'log-entry text-yellow-300';
-      msgEntry.innerHTML = \`<span class="text-gray-500">[\${new Date(data.timestamp).toLocaleTimeString()}]</span> 📨 <span class="text-blue-300">\${data.group}</span> - <span class="text-green-300">\${data.sender}</span>: \${data.content.substring(0, 80)}\${data.content.length > 80 ? '...' : ''}\`;
-      logsContainer.appendChild(msgEntry);
-      logsContainer.scrollTop = logsContainer.scrollHeight;
-    });
+        // SSE para mensajes de grupos
+        logsEventSource.addEventListener('message', (e) => {
+          const data = JSON.parse(e.data);
+          const msgEntry = document.createElement('div');
+          msgEntry.className = 'log-entry text-yellow-300';
+          msgEntry.innerHTML = \`<span class="text-gray-500">[\${new Date(data.timestamp).toLocaleTimeString()}]</span> 📨 <span class="text-blue-300">\${data.group}</span> - <span class="text-green-300">\${data.sender}</span>: \${data.content.substring(0, 80)}\${data.content.length > 80 ? '...' : ''}\`;
+          logsContainer.appendChild(msgEntry);
+          logsContainer.scrollTop = logsContainer.scrollHeight;
+        });
+      }
 
     // SSE para QR
     const qrEventSource = new EventSource('/web/api/qr/stream');
@@ -584,9 +581,9 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
         });
     }
     
-    // Actualizar inmediatamente y luego cada 5 segundos
-    updateStorageStatus();
-    setInterval(updateStorageStatus, 5000);
+      // Actualizar inmediatamente y luego cada 5 segundos
+      updateStorageStatus();
+      setInterval(updateStorageStatus, 5000);
 
 
     // ==========================================
@@ -791,13 +788,20 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
         guideEl.classList.remove('hidden');
       }
     };
-    window.showGoogleDriveSetup = function() {
-      const guideEl = document.getElementById('storage-setup-guide');
-      if (guideEl) {
-        guideEl.classList.remove('hidden');
-      }
-    };
-    }); // Cerrar DOMContentLoaded
+      window.showGoogleDriveSetup = function() {
+        const guideEl = document.getElementById('storage-setup-guide');
+        if (guideEl) {
+          guideEl.classList.remove('hidden');
+        }
+      };
+    }
+    
+    // Ejecutar inmediatamente si el DOM ya está listo, o esperar
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initDashboard);
+    } else {
+      initDashboard();
+    }
   </script>
 </body>
 </html>`;
