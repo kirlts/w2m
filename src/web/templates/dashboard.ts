@@ -542,15 +542,12 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
               <div class="flex items-center justify-between p-3 border rounded \${isMonitored ? 'bg-gray-100' : ''}">
                 <div class="flex-1">
                   <p class="font-medium">\${group.name}</p>
-                  \${group.participants ? \`<p class="text-sm text-gray-500">\${group.participants} participantes</p>\` : ''}
+                  \${group.participants ? '<p class="text-sm text-gray-500">' + group.participants + ' participantes</p>' : ''}
                 </div>
                 <div>
                   \${isMonitored 
                     ? '<span class="text-green-600 text-sm">✓ Monitoreado</span>' 
-                    : \`<button 
-                        onclick="addGroup('\${group.name.replace(/'/g, "\\'")}', '\${(group.jid || '').replace(/'/g, "\\'")}')"
-                        class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
-                      >Agregar</button>\`
+                    : '<button onclick="addGroup(\\'' + group.name.replace(/'/g, "\\'") + '\\', \\'' + (group.jid || '').replace(/'/g, "\\'") + '\\')" class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600">Agregar</button>'
                   }
                 </div>
               </div>
