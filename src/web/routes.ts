@@ -245,22 +245,29 @@ export function setupRoutes(app: Hono, context: WebServerContext): void {
       let message = '';
       
       if (storageType === 'googledrive') {
-        try {
-          // @ts-ignore - Dynamic import resolved at runtime
-          const { isServiceAccountConfigured } = await import('../../plugins/storage/googledrive/service-account.js');
-          const serviceAccountConfigured = isServiceAccountConfigured();
-          
-          if (serviceAccountConfigured) {
-            configured = true;
-            message = 'Google Drive configurado con Service Account';
-          } else {
+        // Verificar directamente si el archivo Service Account existe
+        // Esto evita problemas con imports dinámicos en código compilado
+        const serviceAccountPath = config.GOOGLE_SERVICE_ACCOUNT_PATH || process.env.GOOGLE_SERVICE_ACCOUNT_PATH;
+        
+        if (serviceAccountPath) {
+          try {
+            const { existsSync } = await import('fs');
+            const fileExists = existsSync(serviceAccountPath);
+            
+            if (fileExists) {
+              configured = true;
+              message = 'Google Drive configurado con Service Account';
+            } else {
+              configured = false;
+              message = `Archivo Service Account no encontrado: ${serviceAccountPath}`;
+            }
+          } catch (fsError: any) {
             configured = false;
-            message = 'Google Drive no está configurado. Configura Service Account (ver guía en el dashboard).';
+            message = `Error al verificar archivo: ${fsError.message}`;
           }
-        } catch (importError: any) {
-          // Si no se puede importar el módulo, asumir que no está configurado
+        } else {
           configured = false;
-          message = `Error al verificar Service Account: ${importError.message}`;
+          message = 'Google Drive no está configurado. Configura GOOGLE_SERVICE_ACCOUNT_PATH en .env';
         }
       } else {
         status = 'local';
