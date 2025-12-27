@@ -61,6 +61,11 @@ export interface IngestorInterface {
    * Listar grupos disponibles
    */
   listGroups(): Promise<Group[]>;
+
+  /**
+   * Enviar mensaje a un grupo (opcional - solo si el ingestor lo soporta)
+   */
+  sendMessageToGroup?(groupName: string, text: string): Promise<void>;
 }
 
 /**

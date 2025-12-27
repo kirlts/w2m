@@ -315,6 +315,8 @@ interface StorageInterface {
 - Manejo de reconexión automática
 - Sincronización inicial (ignora mensajes durante primeros 3 segundos)
 - Integración con SSE para enviar QR al dashboard web
+- **Sistema de comandos vía WhatsApp**: Detecta "menu,," o "menu" y responde con menú interactivo
+- **Envío de mensajes**: Implementa `sendMessageToGroup()` para responder comandos
 
 **Flujo de Conexión**:
 1. `start()`: Intenta conectar con credenciales guardadas (no muestra QR)
@@ -477,7 +479,7 @@ Aquí está el código que necesitabas.
 - Autenticación usando JSON key file
 - Requiere carpeta compartida (Service Accounts no tienen cuota propia)
 
-### 10. Web Dashboard (`src/web/`)
+### 11. Web Dashboard (`src/web/`)
 
 **Stack Tecnológico**:
 - **Hono**: Framework web ligero
@@ -510,7 +512,7 @@ Aquí está el código que necesitabas.
 - Configuración de Google Drive (OAuth)
 - Visualización de markdown de categorías
 
-### 11. Config (`src/config/index.ts`)
+### 12. Config (`src/config/index.ts`)
 
 **Responsabilidad**: Gestión centralizada de configuración.
 
@@ -569,7 +571,7 @@ Aquí está el código que necesitabas.
 
 **Uso**: `getConfig()` retorna objeto tipado con todas las configuraciones.
 
-### 12. Logger (`src/utils/logger.ts`)
+### 13. Logger (`src/utils/logger.ts`)
 
 **Tecnología**: Pino
 

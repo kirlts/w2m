@@ -14,6 +14,8 @@ import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode-terminal';
 import { IngestorInterface, Message, Group, ConnectionState } from '../../core/ingestor/interface.js';
 import { GroupManager } from '../../core/groups/index.js';
+import { CategoryManager } from '../../core/categories/index.js';
+import { CommandHandler, CommandContext } from '../../core/commands/handler.js';
 import { getConfig } from '../../config/index.js';
 import { logger } from '../../utils/logger.js';
 import { broadcastSSE } from '../../web/sse.js';
@@ -22,6 +24,8 @@ export class BaileysIngestor implements IngestorInterface {
   private socket: WASocket | null = null;
   private config = getConfig();
   private groupManager: GroupManager;
+  private categoryManager?: CategoryManager;
+  private commandHandler?: CommandHandler;
   private isConnecting = false;
   private connectionState: ConnectionState = 'disconnected';
   private currentQR: string | null = null;
@@ -31,8 +35,39 @@ export class BaileysIngestor implements IngestorInterface {
   private initialSyncTimeout: NodeJS.Timeout | null = null;
   private shouldDisplayQR = false; // Flag para mostrar QR solo cuando se solicita explícitamente
 
-  constructor(groupManager?: GroupManager) {
+  constructor(groupManager?: GroupManager, categoryManager?: CategoryManager) {
     this.groupManager = groupManager || new GroupManager();
+    this.categoryManager = categoryManager;
+    
+    // Inicializar CommandHandler si tenemos categoryManager
+    if (this.categoryManager) {
+      const context: CommandContext = {
+        ingestor: this,
+        groupManager: this.groupManager,
+        categoryManager: this.categoryManager,
+        sendResponse: async (text: string) => {
+          // Este método se usará cuando se detecte un comando
+          // Se implementará en el handler de mensajes
+        }
+      };
+      this.commandHandler = new CommandHandler(context);
+    }
+  }
+
+  /**
+   * Configurar CommandHandler (llamado desde index.ts después de inicializar categoryManager)
+   */
+  setCategoryManager(categoryManager: CategoryManager): void {
+    this.categoryManager = categoryManager;
+    const context: CommandContext = {
+      ingestor: this,
+      groupManager: this.groupManager,
+      categoryManager: categoryManager,
+      sendResponse: async (text: string) => {
+        // Implementado en handleCommand
+      }
+    };
+    this.commandHandler = new CommandHandler(context);
   }
 
   async initialize(): Promise<void> {
@@ -243,10 +278,6 @@ export class BaileysIngestor implements IngestorInterface {
           
           const groupMetadata = await this.socket.groupMetadata(remoteJid);
           const groupName = groupMetadata.subject || 'Sin nombre';
-          
-          if (!this.groupManager.isMonitored(groupName)) {
-            continue;
-          }
           const messageContent = this.extractMessageContent(message);
           
           const senderJid = fromMe 
@@ -255,6 +286,40 @@ export class BaileysIngestor implements IngestorInterface {
           const senderName = fromMe 
             ? 'Yo' 
             : this.getSenderName(message, groupMetadata, senderJid);
+          
+          // Detectar comando "menu,," o "menu" (solo en grupos monitoreados)
+          if (this.commandHandler && this.groupManager.isMonitored(groupName)) {
+            const trimmedContent = messageContent.toLowerCase().trim();
+            if (trimmedContent === 'menu,,' || trimmedContent === 'menu') {
+              try {
+                const userId = `${senderJid}-${remoteJid}`;
+                const response = await this.commandHandler.processCommand('menu', userId);
+                if (response) {
+                  await this.sendMessageToGroup(groupName, response.text);
+                  continue; // No procesar como mensaje normal
+                }
+              } catch (error: any) {
+                logger.error({ error: error.message }, 'Error al procesar comando menu');
+              }
+            } else {
+              // Verificar si hay un comando pendiente (estado)
+              try {
+                const userId = `${senderJid}-${remoteJid}`;
+                const response = await this.commandHandler.processCommand(messageContent, userId);
+                if (response) {
+                  await this.sendMessageToGroup(groupName, response.text);
+                  continue; // No procesar como mensaje normal
+                }
+              } catch (error: any) {
+                // Si falla, continuar con procesamiento normal
+              }
+            }
+          }
+          
+          // Solo procesar mensajes de grupos monitoreados (después de comandos)
+          if (!this.groupManager.isMonitored(groupName)) {
+            continue;
+          }
           
           const timestamp = messageTimestamp 
             ? new Date((messageTimestamp as number) * 1000)
@@ -347,6 +412,33 @@ export class BaileysIngestor implements IngestorInterface {
       jid: group.id,
       participants: group.participants?.length,
     }));
+  }
+
+  /**
+   * Enviar mensaje a un grupo (implementación opcional)
+   */
+  async sendMessageToGroup(groupName: string, text: string): Promise<void> {
+    if (!this.socket || !this.isConnected()) {
+      throw new Error('No hay conexión activa');
+    }
+
+    try {
+      // Buscar el grupo por nombre
+      const groups = await this.socket.groupFetchAllParticipating();
+      const groupList = Object.values(groups);
+      const group = groupList.find(g => (g.subject || 'Sin nombre') === groupName);
+
+      if (!group) {
+        throw new Error(`Grupo "${groupName}" no encontrado`);
+      }
+
+      // Enviar mensaje
+      await this.socket.sendMessage(group.id, { text });
+      logger.debug({ groupName }, 'Mensaje enviado a grupo');
+    } catch (error: any) {
+      logger.error({ error: error.message, groupName }, 'Error al enviar mensaje a grupo');
+      throw error;
+    }
   }
 
   private extractMessageContent(message: proto.IWebMessageInfo): string {

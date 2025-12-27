@@ -23,6 +23,11 @@ await storage.initialize();
 // Crear ingestor usando factory (carga plugin según configuración)
 const ingestor = await createIngestor(groupManager);
 
+// Configurar categoryManager en ingestor si soporta comandos (Baileys)
+if ('setCategoryManager' in ingestor && typeof (ingestor as any).setCategoryManager === 'function') {
+  (ingestor as any).setCategoryManager(categoryManager);
+}
+
 // Manejar señales de terminación
 process.on('SIGTERM', async () => {
   logger.info('🛑 Recibida señal SIGTERM, cerrando...');
