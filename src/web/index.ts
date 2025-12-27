@@ -8,6 +8,7 @@ import { getConfig } from '../config/index.js';
 import { IngestorInterface } from '../core/ingestor/interface.js';
 import { GroupManager } from '../core/groups/index.js';
 import { CategoryManager } from '../core/categories/index.js';
+import { StorageInterface } from '../core/storage/interface.js';
 import { setupRoutes } from './routes.js';
 import { setupSSE } from './sse.js';
 import { enableLoggerSSE } from '../utils/logger-sse.js';
@@ -16,6 +17,7 @@ export interface WebServerContext {
   ingestor: IngestorInterface;
   groupManager: GroupManager;
   categoryManager: CategoryManager;
+  storage: StorageInterface;
 }
 
 let serverInstance: ReturnType<typeof serve> | null = null;

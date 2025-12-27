@@ -430,6 +430,117 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
         });
     }, 2000);
 
+    // Cargar grupos disponibles cuando se abre el modal
+    function loadAvailableGroups() {
+      const groupsListEl = document.getElementById('available-groups-list');
+      if (!groupsListEl) return;
+
+      groupsListEl.innerHTML = '<p class="text-gray-500">Cargando grupos disponibles...</p>';
+
+      fetch('/web/api/groups/available')
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            groupsListEl.innerHTML = \`
+              <div class="bg-yellow-50 border border-yellow-200 rounded p-3 mb-2">
+                <p class="text-yellow-800 text-sm">⚠️ \${data.error}</p>
+              </div>
+            \`;
+            return;
+          }
+
+          if (!data.groups || data.groups.length === 0) {
+            groupsListEl.innerHTML = '<p class="text-gray-500">No hay grupos disponibles.</p>';
+            return;
+          }
+
+          let html = '<div class="space-y-2">';
+          data.groups.forEach((group: any) => {
+            const isMonitored = group.isMonitored || false;
+            html += \`
+              <div class="flex items-center justify-between p-3 border rounded \${isMonitored ? 'bg-gray-100' : ''}">
+                <div class="flex-1">
+                  <p class="font-medium">\${group.name}</p>
+                  \${group.participants ? \`<p class="text-sm text-gray-500">\${group.participants} participantes</p>\` : ''}
+                </div>
+                <div>
+                  \${isMonitored 
+                    ? '<span class="text-green-600 text-sm">✓ Monitoreado</span>' 
+                    : \`<button 
+                        onclick="addGroup('\${group.name.replace(/'/g, "\\'")}', '\${(group.jid || '').replace(/'/g, "\\'")}')"
+                        class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
+                      >Agregar</button>\`
+                  }
+                </div>
+              </div>
+            \`;
+          });
+          html += '</div>';
+          groupsListEl.innerHTML = html;
+        })
+        .catch(err => {
+          groupsListEl.innerHTML = \`
+            <div class="bg-red-50 border border-red-200 rounded p-3">
+              <p class="text-red-800 text-sm">❌ Error al cargar grupos: \${err.message}</p>
+            </div>
+          \`;
+        });
+    }
+
+    // Función para agregar grupo
+    function addGroup(name: string, jid: string) {
+      fetch('/web/api/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, jid })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            // Cerrar modal
+            document.getElementById('add-group-modal')?.classList.add('hidden');
+            // Recargar lista de grupos monitoreados
+            htmx.trigger('#groups-list', 'refresh');
+            // Recargar grupos disponibles
+            loadAvailableGroups();
+          } else {
+            alert('Error: ' + (data.error || 'Error desconocido'));
+          }
+        })
+        .catch(err => {
+          alert('Error al agregar grupo: ' + err.message);
+        });
+    }
+
+    // Detectar cuando se abre el modal de agregar grupo
+    const addGroupButton = document.querySelector('[onclick*="add-group-modal"]');
+    if (addGroupButton) {
+      addGroupButton.addEventListener('click', () => {
+        setTimeout(loadAvailableGroups, 100); // Pequeño delay para asegurar que el modal está visible
+      });
+    }
+
+    // También detectar apertura del modal directamente
+    const addGroupModal = document.getElementById('add-group-modal');
+    if (addGroupModal) {
+      // Usar MutationObserver para detectar cuando el modal se hace visible
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+            const target = mutation.target as HTMLElement;
+            if (!target.classList.contains('hidden')) {
+              loadAvailableGroups();
+            }
+          }
+        });
+      });
+      observer.observe(addGroupModal, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    // Exponer funciones globalmente
+    window.addGroup = addGroup;
+    window.loadAvailableGroups = loadAvailableGroups;
+
     // Actualizar estado de Google Drive Storage
     function updateStorageStatus() {
       fetch('/web/api/storage/status')

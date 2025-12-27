@@ -46,6 +46,7 @@ ingestor.initialize().then(async () => {
     ingestor,
     groupManager,
     categoryManager,
+    storage,
   });
 
   // Iniciar CLI interactivo

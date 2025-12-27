@@ -11,7 +11,7 @@ import { logger } from '../utils/logger.js';
 import { getConfig } from '../config/index.js';
 
 export function setupRoutes(app: Hono, context: WebServerContext): void {
-  const { ingestor, groupManager, categoryManager } = context;
+  const { ingestor, groupManager, categoryManager, storage } = context;
 
   // Dashboard principal
   app.get('/web', async (c) => {
@@ -79,6 +79,14 @@ export function setupRoutes(app: Hono, context: WebServerContext): void {
   // API: Listar grupos disponibles (JSON)
   app.get('/web/api/groups/available', async (c) => {
     try {
+      // Verificar si hay conexión antes de intentar listar grupos
+      if (!ingestor.isConnected()) {
+        return c.json({ 
+          error: 'No hay conexión activa. Conecta primero a WhatsApp.',
+          groups: []
+        }, 200); // 200 para que el frontend pueda manejar el error
+      }
+
       const groups = await ingestor.listGroups();
       const monitoredGroups = groupManager.getAllGroups();
       const monitoredNames = new Set(monitoredGroups.map(g => g.name.toLowerCase()));
@@ -90,7 +98,11 @@ export function setupRoutes(app: Hono, context: WebServerContext): void {
       
       return c.json({ groups: groupsWithStatus });
     } catch (error: any) {
-      return c.json({ error: error.message }, 500);
+      logger.error({ error: error.message }, 'Error al listar grupos disponibles');
+      return c.json({ 
+        error: error.message || 'Error al obtener grupos',
+        groups: []
+      }, 200); // 200 para que el frontend pueda manejar el error
     }
   });
 
@@ -218,17 +230,22 @@ export function setupRoutes(app: Hono, context: WebServerContext): void {
         return c.text('Categoría no encontrada', 404);
       }
       
-      const { readFile } = await import('fs/promises');
-      const { existsSync } = await import('fs');
-      const markdownPath = categoryManager.getCategoryMarkdownPath(name);
+      // Usar StorageInterface en lugar de fs directamente
+      const relativePath = categoryManager.getCategoryMarkdownRelativePath(name);
+      const fileExists = await storage.exists(relativePath);
       
-      if (!existsSync(markdownPath)) {
+      if (!fileExists) {
         return c.text('No hay mensajes en esta categoría aún', 404);
       }
       
-      const content = await readFile(markdownPath, 'utf-8');
+      const content = await storage.readFile(relativePath);
+      if (!content) {
+        return c.text('No hay mensajes en esta categoría aún', 404);
+      }
+      
       return c.text(content);
     } catch (error: any) {
+      logger.error({ error: error.message, category: c.req.param('name') }, 'Error al obtener markdown de categoría');
       return c.text(`Error: ${error.message}`, 500);
     }
   });
