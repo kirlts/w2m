@@ -450,7 +450,7 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
           console.log('[CLIENT-DEBUG] Respuesta recibida:', res.status, res.statusText);
           if (!res.ok) {
             console.error('[CLIENT-DEBUG] Error HTTP:', res.status, res.statusText);
-            throw new Error(\`HTTP \${res.status}: \${res.statusText}\`);
+            throw new Error('HTTP ' + res.status + ': ' + res.statusText);
           }
           return res.json();
         })
@@ -515,7 +515,7 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
           console.log('[CLIENT-DEBUG] Respuesta recibida de groups/available:', res.status, res.statusText);
           if (!res.ok) {
             console.error('[CLIENT-DEBUG] Error HTTP:', res.status, res.statusText);
-            throw new Error(\`HTTP \${res.status}: \${res.statusText}\`);
+            throw new Error('HTTP ' + res.status + ': ' + res.statusText);
           }
           return res.json();
         })
