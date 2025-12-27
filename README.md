@@ -314,7 +314,7 @@ See [`.env.example`](.env.example) for all available options.
 | `INGESTOR_TYPE` | Plugin type to use (`baileys`, etc.) | `baileys` |
 | `WA_SESSION_PATH` | Path for sessions (Baileys plugin) | `./data/session` |
 | `VAULT_PATH` | Markdown vault path | `./data/vault` |
-| `GIT_ENABLED` | Enable Git sync | `true` |
+| `GIT_ENABLED` | Enable Git sync | `false` |
 | `LOG_LEVEL` | Logging level | `info` |
 | `WEB_ENABLED` | Enable web dashboard | `true` |
 | `WEB_PORT` | Web dashboard port | `3000` |
@@ -368,11 +368,7 @@ This message will be saved to `data/vault/categories/code.md` if a "CODE" catego
 
 W2M can automatically sync your markdown files to Google Drive, keeping your data backed up and accessible from anywhere.
 
-### Setup Methods
-
-W2M supports two authentication methods for Google Drive:
-
-#### Option 1: Service Account (Recommended)
+### Setup
 
 **Advantages:**
 - ✅ No browser authentication required
@@ -404,32 +400,6 @@ W2M supports two authentication methods for Google Drive:
    - Give it "Editor" permissions
    - This allows you to see files in your personal Drive
 
-#### Option 2: OAuth (For Web Apps)
-
-**Advantages:**
-- ✅ User-specific access
-- ✅ Works with user's personal Drive
-
-**Setup Steps:**
-
-1. **Configure OAuth in GCP:**
-   - Follow the detailed guide: [`docs/GCP-OAUTH-SETUP.md`](docs/GCP-OAUTH-SETUP.md)
-   - Create OAuth 2.0 credentials
-   - Configure redirect URIs
-
-2. **Configure `.env`:**
-   ```env
-   STORAGE_TYPE=googledrive
-   GOOGLE_CLIENT_ID=your-client-id
-   GOOGLE_CLIENT_SECRET=your-client-secret
-   GOOGLE_REDIRECT_URI=http://localhost:3000/web/api/oauth/googledrive/callback
-   ```
-
-3. **Authenticate via Dashboard:**
-   - Open the web dashboard
-   - Click "Connect with Google Drive"
-   - Authorize the application
-
 ### How It Works
 
 - **Automatic Sync**: All markdown files are automatically uploaded to Google Drive
@@ -452,10 +422,10 @@ W2M/
 ### Dashboard Integration
 
 The web dashboard shows:
-- ✅ Connection status (Service Account or OAuth)
+- ✅ Connection status
 - ✅ Storage type (Local or Google Drive)
 - ✅ Quick setup instructions
-- ✅ Authentication status
+- ✅ Service Account configuration status
 
 ### Troubleshooting
 
@@ -468,9 +438,8 @@ The web dashboard shows:
 - Check file permissions: `chmod 600 service-account.json`
 - Ensure Google Drive API is enabled in GCP
 
-**See detailed guides:**
-- [`docs/GCP-SERVICE-ACCOUNT-SETUP.md`](docs/GCP-SERVICE-ACCOUNT-SETUP.md) - Service Account setup
-- [`docs/GCP-OAUTH-SETUP.md`](docs/GCP-OAUTH-SETUP.md) - OAuth setup
+**See detailed guide:**
+- [`docs/GCP-SERVICE-ACCOUNT-SETUP.md`](docs/GCP-SERVICE-ACCOUNT-SETUP.md) - Complete Service Account setup guide
 
 ## 📁 Project Structure
 

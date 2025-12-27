@@ -4,7 +4,6 @@
 import { StorageInterface } from '../../../core/storage/interface.js';
 import { logger } from '../../../utils/logger.js';
 import { google } from 'googleapis';
-import { getAuthenticatedClient } from './oauth.js';
 import { getServiceAccountClient, isServiceAccountConfigured } from './service-account.js';
 
 export class GoogleDriveStorage implements StorageInterface {
@@ -13,17 +12,12 @@ export class GoogleDriveStorage implements StorageInterface {
 
   async initialize(): Promise<void> {
     try {
-      let auth;
-      
-      // Priorizar Service Account si está configurado (más simple)
-      if (isServiceAccountConfigured()) {
-        logger.info({}, '🔐 Usando Service Account para autenticación');
-        auth = await getServiceAccountClient();
-      } else {
-        // Fallback a OAuth si Service Account no está configurado
-        logger.info({}, '🔐 Usando OAuth para autenticación');
-        auth = await getAuthenticatedClient();
+      if (!isServiceAccountConfigured()) {
+        throw new Error('GOOGLE_SERVICE_ACCOUNT_PATH debe estar configurado. Ve a docs/GCP-SERVICE-ACCOUNT-SETUP.md para más información.');
       }
+      
+      logger.info({}, '🔐 Inicializando Google Drive con Service Account');
+      const auth = await getServiceAccountClient();
       
       this.drive = google.drive({ version: 'v3', auth });
       
@@ -32,15 +26,7 @@ export class GoogleDriveStorage implements StorageInterface {
       
       logger.info({ folderId: this.w2mFolderId }, '✅ GoogleDriveStorage inicializado');
     } catch (error: any) {
-      if (error.message.includes('No hay tokens guardados')) {
-        logger.warn({}, '⚠️ GoogleDriveStorage: No hay tokens. Usa el dashboard para autenticarte o configura Service Account.');
-        throw new Error('Google Drive no está autenticado. Configura Service Account o ve al dashboard y haz clic en "Conectar con Google Drive".');
-      }
-      if (error.message.includes('Service Account')) {
-        logger.error({ error: error.message }, '❌ Error con Service Account');
-        throw error;
-      }
-      logger.error({ error }, '❌ Error al inicializar GoogleDriveStorage');
+      logger.error({ error: error.message }, '❌ Error al inicializar GoogleDriveStorage');
       throw error;
     }
   }

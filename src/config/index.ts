@@ -20,7 +20,7 @@ const configSchema = z.object({
   VAULT_ENABLE_FRONTMATTER: z.coerce.boolean().default(true),
   
   // Git Sync
-  GIT_ENABLED: z.coerce.boolean().default(true),
+  GIT_ENABLED: z.coerce.boolean().default(false),
   GIT_REMOTE: z.string().default('origin'),
   GIT_BRANCH: z.string().default('main'),
   GIT_COMMIT_PREFIX: z.string().default('[W2M]'),
@@ -49,12 +49,7 @@ const configSchema = z.object({
   // Storage
   STORAGE_TYPE: z.enum(['local', 'googledrive', 'git']).default('local'),
   
-  // Google Drive OAuth (para autenticación de usuario)
-  GOOGLE_CLIENT_ID: z.string().optional(),
-  GOOGLE_CLIENT_SECRET: z.string().optional(),
-  GOOGLE_REDIRECT_URI: z.string().optional(),
-  
-  // Google Drive Service Account (más simple, sin OAuth)
+  // Google Drive Service Account
   GOOGLE_SERVICE_ACCOUNT_PATH: z.string().optional(),
 });
 

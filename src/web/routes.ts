@@ -233,178 +233,29 @@ export function setupRoutes(app: Hono, context: WebServerContext): void {
     }
   });
 
-  // API: OAuth Google Drive - Iniciar flujo
-  app.get('/web/api/oauth/googledrive/start', async (c) => {
-    try {
-      // @ts-ignore - Dynamic import resolved at runtime
-      const { getAuthUrl } = await import('../../plugins/storage/googledrive/oauth.js');
-      const authUrl = getAuthUrl();
-      logger.info({}, '🔄 [Dashboard] Iniciando flujo OAuth de Google Drive');
-      return c.redirect(authUrl);
-    } catch (error: any) {
-      logger.error({ error: error.message }, '❌ [Dashboard] Error al iniciar OAuth');
-      return c.json({ 
-        error: error.message || 'Error al iniciar OAuth',
-        message: 'Verifica que GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET estén configurados',
-      }, 500);
-    }
-  });
-
-  // API: OAuth Google Drive - Callback
-  app.get('/web/api/oauth/googledrive/callback', async (c) => {
-    try {
-      const code = c.req.query('code');
-      const error = c.req.query('error');
-      
-      if (error) {
-        logger.error({ error }, '❌ [Dashboard] Error en callback OAuth');
-        return c.html(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <title>Error de Autenticación</title>
-            <script src="https://cdn.tailwindcss.com"></script>
-          </head>
-          <body class="bg-gray-100 flex items-center justify-center min-h-screen">
-            <div class="bg-white p-8 rounded-lg shadow-lg max-w-md">
-              <h1 class="text-2xl font-bold text-red-600 mb-4">❌ Error de Autenticación</h1>
-              <p class="text-gray-700 mb-4">${error}</p>
-              <a href="/web" class="text-blue-500 hover:underline">Volver al Dashboard</a>
-            </div>
-          </body>
-          </html>
-        `);
-      }
-      
-      if (!code) {
-        return c.html(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <title>Error de Autenticación</title>
-            <script src="https://cdn.tailwindcss.com"></script>
-          </head>
-          <body class="bg-gray-100 flex items-center justify-center min-h-screen">
-            <div class="bg-white p-8 rounded-lg shadow-lg max-w-md">
-              <h1 class="text-2xl font-bold text-red-600 mb-4">❌ Error</h1>
-              <p class="text-gray-700 mb-4">No se recibió código de autorización</p>
-              <a href="/web" class="text-blue-500 hover:underline">Volver al Dashboard</a>
-            </div>
-          </body>
-          </html>
-        `);
-      }
-      
-      // @ts-ignore - Dynamic import resolved at runtime
-      const { getTokensFromCode, saveTokens } = await import('../../plugins/storage/googledrive/oauth.js');
-      const tokens = await getTokensFromCode(code);
-      await saveTokens(tokens);
-      
-      logger.info({}, '✅ [Dashboard] OAuth de Google Drive completado exitosamente');
-      
-      return c.html(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>Autenticación Exitosa</title>
-          <script src="https://cdn.tailwindcss.com"></script>
-        </head>
-        <body class="bg-gray-100 flex items-center justify-center min-h-screen">
-          <div class="bg-white p-8 rounded-lg shadow-lg max-w-md">
-            <h1 class="text-2xl font-bold text-green-600 mb-4">✅ Autenticación Exitosa</h1>
-            <p class="text-gray-700 mb-4">Google Drive ha sido conectado correctamente.</p>
-            <p class="text-sm text-gray-500 mb-4">Los archivos markdown se guardarán en la carpeta "W2M" de tu Google Drive.</p>
-            <a href="/web" class="inline-block bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Volver al Dashboard</a>
-          </div>
-          <script>
-            // Cerrar ventana después de 3 segundos si fue abierta en popup
-            setTimeout(() => {
-              if (window.opener) {
-                window.opener.location.reload();
-                window.close();
-              }
-            }, 3000);
-          </script>
-        </body>
-        </html>
-      `);
-    } catch (error: any) {
-      logger.error({ error: error.message }, '❌ [Dashboard] Error en callback OAuth');
-      return c.html(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>Error</title>
-          <script src="https://cdn.tailwindcss.com"></script>
-        </head>
-        <body class="bg-gray-100 flex items-center justify-center min-h-screen">
-          <div class="bg-white p-8 rounded-lg shadow-lg max-w-md">
-            <h1 class="text-2xl font-bold text-red-600 mb-4">❌ Error</h1>
-            <p class="text-gray-700 mb-4">${error.message || 'Error desconocido'}</p>
-            <a href="/web" class="text-blue-500 hover:underline">Volver al Dashboard</a>
-          </div>
-        </body>
-        </html>
-      `);
-    }
-  });
-
-  // API: Estado de OAuth Google Drive
-  app.get('/web/api/oauth/googledrive/status', async (c) => {
-    try {
-      // @ts-ignore - Dynamic import resolved at runtime
-      const { hasTokens } = await import('../../plugins/storage/googledrive/oauth.js');
-      const isAuthenticated = await hasTokens();
-      return c.json({ 
-        authenticated: isAuthenticated,
-        message: isAuthenticated ? 'Google Drive está conectado' : 'Google Drive no está conectado'
-      });
-    } catch (error: any) {
-      return c.json({ 
-        authenticated: false,
-        error: error.message 
-      }, 500);
-    }
-  });
-
   // API: Estado de Google Drive Storage
   app.get('/web/api/storage/status', async (c) => {
     try {
       const config = getConfig();
       // @ts-ignore - Dynamic import resolved at runtime
       const { isServiceAccountConfigured } = await import('../../plugins/storage/googledrive/service-account.js');
-      // @ts-ignore - Dynamic import resolved at runtime
-      const { hasTokens } = await import('../../plugins/storage/googledrive/oauth.js');
       
       const storageType = config.STORAGE_TYPE || 'local';
       let status = 'local';
-      let method = null;
       let configured = false;
       let message = '';
       
       if (storageType === 'googledrive') {
         const serviceAccountConfigured = isServiceAccountConfigured();
-        const oauthConfigured = await hasTokens();
         
         if (serviceAccountConfigured) {
           status = 'googledrive';
-          method = 'service_account';
           configured = true;
           message = 'Google Drive configurado con Service Account';
-        } else if (oauthConfigured) {
-          status = 'googledrive';
-          method = 'oauth';
-          configured = true;
-          message = 'Google Drive configurado con OAuth';
         } else {
           status = 'googledrive';
-          method = null;
           configured = false;
-          message = 'Google Drive no está configurado. Configura Service Account o OAuth.';
+          message = 'Google Drive no está configurado. Configura Service Account (ver guía en el dashboard).';
         }
       } else {
         status = 'local';
@@ -414,7 +265,6 @@ export function setupRoutes(app: Hono, context: WebServerContext): void {
       
       return c.json({
         storageType: status,
-        method,
         configured,
         message,
         serviceAccountPath: config.GOOGLE_SERVICE_ACCOUNT_PATH || null,

@@ -1,5 +1,5 @@
 // W2M - Google Drive Service Account Authentication
-// Autenticación usando Service Account (más simple, sin OAuth)
+// Autenticación usando Service Account para Google Drive
 
 import { google } from 'googleapis';
 import { getConfig } from '../../../config/index.js';
