@@ -32,37 +32,55 @@ export class GoogleDriveStorage implements StorageInterface {
   }
 
   /**
-   * Buscar o crear carpeta "W2M" en Google Drive
+   * Buscar o usar carpeta "W2M" compartida en Google Drive
    */
   private async findOrCreateW2MFolder(): Promise<string> {
     try {
-      // Buscar carpeta "W2M"
+      // Si hay un ID de carpeta configurado, usarlo directamente
+      const config = await import('../../../config/index.js').then(m => m.getConfig());
+      const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID || (config as any).GOOGLE_DRIVE_FOLDER_ID;
+      
+      if (folderId) {
+        // Verificar que la carpeta existe y es accesible
+        try {
+          await this.drive.files.get({
+            fileId: folderId,
+            fields: 'id, name',
+            supportsAllDrives: true,
+          });
+          logger.info({ folderId }, '📁 Usando carpeta W2M compartida (ID configurado)');
+          return folderId;
+        } catch (error: any) {
+          logger.warn({ folderId, error: error.message }, '⚠️ No se pudo acceder a la carpeta con ID configurado, buscando por nombre...');
+        }
+      }
+
+      // Buscar carpeta "W2M" en carpetas compartidas
       const response = await this.drive.files.list({
         q: "name='W2M' and mimeType='application/vnd.google-apps.folder' and trashed=false",
         fields: 'files(id, name)',
         spaces: 'drive',
+        includeItemsFromAllDrives: true,
+        supportsAllDrives: true,
       });
 
       if (response.data.files && response.data.files.length > 0) {
-        const folderId = response.data.files[0].id;
-        logger.info({ folderId }, '📁 Carpeta W2M encontrada en Google Drive');
-        return folderId!;
+        const foundFolderId = response.data.files[0].id;
+        logger.info({ folderId: foundFolderId }, '📁 Carpeta W2M encontrada en Google Drive (compartida)');
+        return foundFolderId!;
       }
 
-      // Crear carpeta "W2M" si no existe
-      const createResponse = await this.drive.files.create({
-        requestBody: {
-          name: 'W2M',
-          mimeType: 'application/vnd.google-apps.folder',
-        },
-        fields: 'id, name',
-      });
-
-      const folderId = createResponse.data.id;
-      logger.info({ folderId }, '📁 Carpeta W2M creada en Google Drive');
-      return folderId!;
-    } catch (error) {
-      logger.error({ error }, '❌ Error al buscar/crear carpeta W2M');
+      // Si no se encuentra, lanzar error con instrucciones
+      throw new Error(
+        'No se encontró la carpeta W2M compartida. ' +
+        'Por favor, comparte una carpeta llamada "W2M" con la Service Account ' +
+        '(w2m-drive-service@kairos-469218.iam.gserviceaccount.com) o configura GOOGLE_DRIVE_FOLDER_ID en .env'
+      );
+    } catch (error: any) {
+      if (error.message.includes('No se encontró')) {
+        throw error;
+      }
+      logger.error({ error: error.message }, '❌ Error al buscar carpeta W2M');
       throw error;
     }
   }
@@ -91,6 +109,8 @@ export class GoogleDriveStorage implements StorageInterface {
         q: `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and '${currentParentId}' in parents and trashed=false`,
         fields: 'files(id, name)',
         spaces: 'drive',
+        includeItemsFromAllDrives: true,
+        supportsAllDrives: true,
       });
 
       if (response.data.files && response.data.files.length > 0) {
@@ -104,6 +124,7 @@ export class GoogleDriveStorage implements StorageInterface {
             parents: [currentParentId],
           },
           fields: 'id, name',
+          supportsAllDrives: true,
         });
         currentParentId = createResponse.data.id!;
       }
@@ -121,6 +142,8 @@ export class GoogleDriveStorage implements StorageInterface {
         q: `name='${filename}' and '${parentId}' in parents and trashed=false`,
         fields: 'files(id, name)',
         spaces: 'drive',
+        includeItemsFromAllDrives: true,
+        supportsAllDrives: true,
       });
 
       if (response.data.files && response.data.files.length > 0) {
@@ -156,6 +179,7 @@ export class GoogleDriveStorage implements StorageInterface {
             mimeType: 'text/markdown',
             body: content,
           },
+          supportsAllDrives: true,
         });
         logger.debug({ path, fileId: existingFileId }, '📝 Archivo actualizado en Google Drive');
       } else {
@@ -171,6 +195,7 @@ export class GoogleDriveStorage implements StorageInterface {
             body: content,
           },
           fields: 'id, name',
+          supportsAllDrives: true,
         });
         logger.debug({ path }, '📝 Archivo creado en Google Drive');
       }
@@ -200,7 +225,7 @@ export class GoogleDriveStorage implements StorageInterface {
 
       // Descargar contenido
       const response = await this.drive.files.get(
-        { fileId, alt: 'media' },
+        { fileId, alt: 'media', supportsAllDrives: true },
         { responseType: 'text' }
       );
 
@@ -245,7 +270,7 @@ export class GoogleDriveStorage implements StorageInterface {
         return;
       }
 
-      await this.drive.files.delete({ fileId });
+      await this.drive.files.delete({ fileId, supportsAllDrives: true });
       logger.debug({ path, fileId }, '🗑️ Archivo eliminado de Google Drive');
     } catch (error) {
       logger.error({ error, path }, '❌ Error al eliminar archivo de Google Drive');
@@ -266,6 +291,8 @@ export class GoogleDriveStorage implements StorageInterface {
         q: `'${parentId}' in parents and trashed=false`,
         fields: 'files(id, name, mimeType)',
         spaces: 'drive',
+        includeItemsFromAllDrives: true,
+        supportsAllDrives: true,
       });
 
       if (!response.data.files) {

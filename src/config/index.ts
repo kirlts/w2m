@@ -51,6 +51,7 @@ const configSchema = z.object({
   
   // Google Drive Service Account
   GOOGLE_SERVICE_ACCOUNT_PATH: z.string().optional(),
+  GOOGLE_DRIVE_FOLDER_ID: z.string().optional(),
 });
 
 export type Config = z.infer<typeof configSchema>;
