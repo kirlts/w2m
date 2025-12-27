@@ -98,29 +98,36 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
       <div id="storage-status" class="mb-4">
         <p class="text-gray-500">Verificando estado...</p>
       </div>
-      <div id="storage-actions" class="flex gap-2 mb-4">
-        <!-- Botones se mostrarán dinámicamente según el estado -->
-      </div>
-      <div id="storage-info" class="text-sm text-gray-500 mt-2">
-        <!-- Información adicional se mostrará aquí -->
-      </div>
-      <div id="storage-setup-guide" class="mt-4 p-4 bg-blue-50 rounded-lg hidden">
-        <h3 class="font-semibold mb-2">📖 Guía de Configuración</h3>
-        <div class="text-sm space-y-2">
-          <p><strong>Configuración de Service Account</strong></p>
-          <ol class="list-decimal list-inside ml-2 space-y-1">
-            <li>Crea una Service Account en <a href="https://console.cloud.google.com" target="_blank" class="text-blue-600 hover:underline">Google Cloud Console</a></li>
-            <li>Descarga el archivo JSON de credenciales</li>
-            <li>Sube el archivo a: <code class="bg-gray-200 px-1 rounded">./data/googledrive/service-account.json</code></li>
-            <li>Configura en <code class="bg-gray-200 px-1 rounded">.env</code>: <code class="bg-gray-200 px-1 rounded">STORAGE_TYPE=googledrive</code></li>
-            <li>Configura en <code class="bg-gray-200 px-1 rounded">.env</code>: <code class="bg-gray-200 px-1 rounded">GOOGLE_SERVICE_ACCOUNT_PATH=./data/googledrive/service-account.json</code></li>
+      <div id="oauth-flow" class="hidden">
+        <div id="oauth-url-container" class="mb-4 hidden">
+          <p class="mb-2 font-medium">Paso 1: Abre este enlace en tu navegador</p>
+          <div class="flex gap-2 mb-4">
+            <input type="text" id="oauth-url" readonly class="flex-1 border rounded px-3 py-2 bg-gray-50 text-sm" />
+            <button onclick="copyOAuthUrl()" class="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">📋 Copiar</button>
+            <a id="oauth-url-link" href="#" target="_blank" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-center">🔗 Abrir</a>
+          </div>
+          <p class="mb-2 font-medium">Paso 2: Pega el código que Google te da</p>
+          <div class="flex gap-2">
+            <input type="text" id="oauth-code" placeholder="Pega el código aquí" class="flex-1 border rounded px-3 py-2" />
+            <button onclick="submitOAuthCode()" id="submit-oauth-btn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">✓ Autorizar</button>
+          </div>
+          <p id="oauth-error" class="text-red-500 mt-2 hidden"></p>
+          <p id="oauth-success" class="text-green-500 mt-2 hidden"></p>
+        </div>
+        <div id="oauth-not-configured" class="hidden p-4 bg-yellow-50 border border-yellow-200 rounded">
+          <p class="font-medium mb-2">⚠️ OAuth no configurado</p>
+          <p class="text-sm mb-2">Para usar OAuth con tu cuenta personal de Google Drive:</p>
+          <ol class="text-sm list-decimal list-inside space-y-1">
+            <li>Ve a <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="text-blue-600 hover:underline">Google Cloud Console → Credentials</a></li>
+            <li>Crea un OAuth 2.0 Client ID (tipo: <strong>Desktop app</strong>)</li>
+            <li>Descarga el JSON</li>
+            <li>Súbelo como: <code class="bg-gray-200 px-1 rounded">./data/googledrive/oauth-credentials.json</code></li>
             <li>Reinicia W2M</li>
           </ol>
-          <p class="mt-2 text-xs">
-            📚 Ver guía detallada: 
-            <a href="https://github.com/your-repo/w2m/blob/main/docs/GCP-SERVICE-ACCOUNT-SETUP.md" target="_blank" class="text-blue-600 hover:underline">docs/GCP-SERVICE-ACCOUNT-SETUP.md</a>
-          </p>
         </div>
+      </div>
+      <div id="storage-actions" class="flex gap-2 mt-4">
+        <!-- Botones se mostrarán dinámicamente -->
       </div>
     </div>
 
@@ -436,65 +443,171 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
         }
       });
 
-    // Cargar estado de Google Drive Storage una sola vez al inicio
-    // (No necesita polling - el estado solo cambia cuando se configura Service Account)
-    console.log('[CLIENT-DEBUG] Iniciando carga de estado de Google Drive Storage');
-    const storageStatusEl = document.getElementById('storage-status');
-    console.log('[CLIENT-DEBUG] Elemento storage-status encontrado:', !!storageStatusEl);
+    // Cargar estado de Google Drive Storage
+    loadStorageStatus();
     
-    if (!storageStatusEl) {
-      console.error('[CLIENT-DEBUG] ERROR: Elemento storage-status NO encontrado en DOM');
-    } else {
+    function loadStorageStatus() {
       fetch('/web/api/storage/status')
-        .then(res => {
-          console.log('[CLIENT-DEBUG] Respuesta recibida:', res.status, res.statusText);
-          if (!res.ok) {
-            console.error('[CLIENT-DEBUG] Error HTTP:', res.status, res.statusText);
-            throw new Error('HTTP ' + res.status + ': ' + res.statusText);
-          }
-          return res.json();
-        })
+        .then(res => res.json())
         .then(data => {
-          console.log('[CLIENT-DEBUG] Datos recibidos:', JSON.stringify(data));
           const statusEl = document.getElementById('storage-status');
           const actionsEl = document.getElementById('storage-actions');
-          const infoEl = document.getElementById('storage-info');
-          
-          console.log('[CLIENT-DEBUG] Elementos DOM:', { statusEl: !!statusEl, actionsEl: !!actionsEl, infoEl: !!infoEl });
+          const oauthFlow = document.getElementById('oauth-flow');
           
           if (statusEl) {
-            if (data.configured) {
-              console.log('[CLIENT-DEBUG] Actualizando estado: CONFIGURADO');
+            if (data.drive) {
+              // Google Drive está conectado
               statusEl.innerHTML = \`
-                <p class="text-green-600 font-medium">✅ \${data.message || 'Google Drive configurado'}</p>
-                <p class="text-sm text-gray-500 mt-1">Tipo: \${data.storageType}</p>
+                <div class="flex items-center gap-2">
+                  <span class="text-2xl">✅</span>
+                  <div>
+                    <p class="text-green-600 font-medium">Google Drive conectado</p>
+                    <p class="text-sm text-gray-500">Método: \${data.authMethod === 'oauth' ? 'OAuth (tu cuenta)' : 'Service Account'}</p>
+                    \${data.userEmail ? '<p class="text-sm text-gray-500">Usuario: ' + data.userEmail + '</p>' : ''}
+                  </div>
+                </div>
               \`;
+              if (actionsEl) {
+                actionsEl.innerHTML = data.authMethod === 'oauth' 
+                  ? '<button onclick="disconnectDrive()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">Desconectar Google Drive</button>'
+                  : '';
+              }
+              if (oauthFlow) oauthFlow.classList.add('hidden');
             } else {
-              console.log('[CLIENT-DEBUG] Actualizando estado: NO CONFIGURADO');
+              // Google Drive no está conectado
               statusEl.innerHTML = \`
-                <p class="text-yellow-600 font-medium">⚠️ \${data.message || 'Google Drive no configurado'}</p>
-                <p class="text-sm text-gray-500 mt-1">Tipo: \${data.storageType}</p>
+                <div class="flex items-center gap-2">
+                  <span class="text-2xl">💾</span>
+                  <div>
+                    <p class="text-gray-600 font-medium">Solo almacenamiento local</p>
+                    <p class="text-sm text-gray-500">Los archivos se guardan en el servidor</p>
+                  </div>
+                </div>
               \`;
+              if (actionsEl) {
+                actionsEl.innerHTML = '<button onclick="startOAuthFlow()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">🔗 Conectar Google Drive</button>';
+              }
             }
-            console.log('[CLIENT-DEBUG] Estado actualizado correctamente');
-          } else {
-            console.error('[CLIENT-DEBUG] ERROR: statusEl es null después de recibir datos');
-          }
-          
-          if (infoEl && data.serviceAccountPath) {
-            infoEl.innerHTML = \`<p class="text-xs">Ruta: <code class="bg-gray-100 px-1 rounded">\${data.serviceAccountPath}</code></p>\`;
           }
         })
         .catch(err => {
-          console.error('[CLIENT-DEBUG] Error en fetch:', err);
           const statusEl = document.getElementById('storage-status');
           if (statusEl) {
-            statusEl.innerHTML = \`<p class="text-red-500">❌ Error al verificar estado: \${err.message}</p>\`;
-          } else {
-            console.error('[CLIENT-DEBUG] ERROR: No se pudo actualizar estado porque statusEl es null');
+            statusEl.innerHTML = '<p class="text-red-500">❌ Error: ' + err.message + '</p>';
           }
         });
     }
+
+    // Iniciar flujo OAuth
+    window.startOAuthFlow = function() {
+      const oauthFlow = document.getElementById('oauth-flow');
+      const urlContainer = document.getElementById('oauth-url-container');
+      const notConfigured = document.getElementById('oauth-not-configured');
+      
+      if (oauthFlow) oauthFlow.classList.remove('hidden');
+      
+      fetch('/web/api/oauth/authorize')
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            if (notConfigured) notConfigured.classList.remove('hidden');
+            if (urlContainer) urlContainer.classList.add('hidden');
+          } else {
+            if (urlContainer) urlContainer.classList.remove('hidden');
+            if (notConfigured) notConfigured.classList.add('hidden');
+            
+            const urlInput = document.getElementById('oauth-url');
+            const urlLink = document.getElementById('oauth-url-link');
+            if (urlInput) urlInput.value = data.authUrl;
+            if (urlLink) urlLink.href = data.authUrl;
+          }
+        })
+        .catch(err => {
+          alert('Error: ' + err.message);
+        });
+    };
+
+    // Copiar URL de OAuth
+    window.copyOAuthUrl = function() {
+      const urlInput = document.getElementById('oauth-url');
+      if (urlInput) {
+        urlInput.select();
+        document.execCommand('copy');
+        alert('URL copiada al portapapeles');
+      }
+    };
+
+    // Enviar código OAuth
+    window.submitOAuthCode = function() {
+      const codeInput = document.getElementById('oauth-code');
+      const errorEl = document.getElementById('oauth-error');
+      const successEl = document.getElementById('oauth-success');
+      const submitBtn = document.getElementById('submit-oauth-btn');
+      
+      if (!codeInput || !codeInput.value.trim()) {
+        if (errorEl) {
+          errorEl.textContent = 'Por favor, pega el código de autorización';
+          errorEl.classList.remove('hidden');
+        }
+        return;
+      }
+      
+      if (submitBtn) submitBtn.disabled = true;
+      if (errorEl) errorEl.classList.add('hidden');
+      if (successEl) successEl.classList.add('hidden');
+      
+      fetch('/web/api/oauth/callback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: codeInput.value.trim() })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            if (errorEl) {
+              errorEl.textContent = data.error;
+              errorEl.classList.remove('hidden');
+            }
+            if (submitBtn) submitBtn.disabled = false;
+          } else {
+            if (successEl) {
+              successEl.textContent = '¡Autorización exitosa! Google Drive conectado.';
+              successEl.classList.remove('hidden');
+            }
+            // Recargar estado después de 1 segundo
+            setTimeout(function() {
+              loadStorageStatus();
+              const oauthFlow = document.getElementById('oauth-flow');
+              if (oauthFlow) oauthFlow.classList.add('hidden');
+            }, 1500);
+          }
+        })
+        .catch(err => {
+          if (errorEl) {
+            errorEl.textContent = 'Error: ' + err.message;
+            errorEl.classList.remove('hidden');
+          }
+          if (submitBtn) submitBtn.disabled = false;
+        });
+    };
+
+    // Desconectar Google Drive
+    window.disconnectDrive = function() {
+      if (!confirm('¿Seguro que quieres desconectar Google Drive?')) return;
+      
+      fetch('/web/api/oauth/revoke', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            loadStorageStatus();
+          } else {
+            alert('Error: ' + (data.error || 'No se pudo desconectar'));
+          }
+        })
+        .catch(err => {
+          alert('Error: ' + err.message);
+        });
+    };
 
     // Cargar grupos disponibles cuando se abre el modal
     function loadAvailableGroups() {

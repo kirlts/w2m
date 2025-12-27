@@ -1,11 +1,11 @@
 // W2M - Google Drive Storage Plugin
-// Implementación de StorageInterface usando Google Drive API
-// Enfoque híbrido: Local + Google Drive
+// Implementación híbrida: Local + Google Drive (OAuth o Service Account)
 
 import { StorageInterface } from '../../../core/storage/interface.js';
 import { logger } from '../../../utils/logger.js';
 import { google } from 'googleapis';
 import { getServiceAccountClient, isServiceAccountConfigured } from './service-account.js';
+import { getAuthenticatedClient, hasOAuthTokens, isOAuthConfigured } from './oauth.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { getConfig } from '../../../config/index.js';
@@ -15,7 +15,8 @@ export class GoogleDriveStorage implements StorageInterface {
   private w2mFolderId: string | null = null;
   private localBasePath: string;
   private driveEnabled: boolean = false;
-  private serviceAccountEmail: string = '';
+  private authMethod: 'oauth' | 'service-account' | 'none' = 'none';
+  private userEmail: string = '';
 
   constructor() {
     const config = getConfig();
@@ -32,133 +33,152 @@ export class GoogleDriveStorage implements StorageInterface {
       throw error;
     }
 
-    // Intentar inicializar Google Drive (opcional)
-    try {
-      if (!isServiceAccountConfigured()) {
-        logger.warn('⚠️ Google Drive no configurado, usando solo almacenamiento local');
+    // Intentar autenticación (OAuth tiene prioridad sobre Service Account)
+    await this.initializeGoogleDrive();
+  }
+
+  /**
+   * Inicializar Google Drive con OAuth o Service Account
+   */
+  private async initializeGoogleDrive(): Promise<void> {
+    // Prioridad 1: OAuth (usa cuota del usuario)
+    if (await isOAuthConfigured() && await hasOAuthTokens()) {
+      try {
+        logger.info({}, '🔐 Inicializando Google Drive con OAuth');
+        const auth = await getAuthenticatedClient();
+        this.drive = google.drive({ version: 'v3', auth });
+        this.authMethod = 'oauth';
+        
+        // Obtener info del usuario
+        try {
+          const oauth2 = google.oauth2({ version: 'v2', auth });
+          const userInfo = await oauth2.userinfo.get();
+          this.userEmail = userInfo.data.email || 'usuario';
+          logger.info({ email: this.userEmail }, '✅ Autenticado con OAuth');
+        } catch {
+          this.userEmail = 'usuario autenticado';
+        }
+        
+        // Buscar o crear carpeta W2M
+        this.w2mFolderId = await this.findOrCreateW2MFolder();
+        
+        if (this.w2mFolderId) {
+          this.driveEnabled = true;
+          logger.info({ folderId: this.w2mFolderId }, '✅ Google Drive habilitado (OAuth)');
+        }
         return;
+      } catch (error: any) {
+        logger.warn({ error: error.message }, '⚠️ Error con OAuth, intentando Service Account');
       }
-      
-      logger.info({}, '🔐 Inicializando Google Drive con Service Account');
-      const auth = await getServiceAccountClient();
-      
-      this.drive = google.drive({ version: 'v3', auth });
-      
-      // Obtener email de la service account para logging
-      const credentials = await auth.getCredentials();
-      this.serviceAccountEmail = (credentials as any).client_email || 'desconocido';
-      logger.info({ serviceAccountEmail: this.serviceAccountEmail }, '✅ Service Account autenticado');
-      
-      // Buscar carpeta "W2M" compartida
-      this.w2mFolderId = await this.findSharedW2MFolder();
-      
-      if (this.w2mFolderId) {
-        this.driveEnabled = true;
-        logger.info({ folderId: this.w2mFolderId }, '✅ Google Drive habilitado (sincronización activa)');
-      } else {
-        logger.warn('⚠️ No se encontró carpeta W2M compartida, usando solo almacenamiento local');
-        logger.warn(`📧 Comparte una carpeta "W2M" con: ${this.serviceAccountEmail}`);
+    }
+
+    // Prioridad 2: Service Account (solo funciona con Shared Drives o Workspace)
+    if (isServiceAccountConfigured()) {
+      try {
+        logger.info({}, '🔐 Inicializando Google Drive con Service Account');
+        const auth = await getServiceAccountClient();
+        this.drive = google.drive({ version: 'v3', auth });
+        this.authMethod = 'service-account';
+        
+        const credentials = await auth.getCredentials();
+        this.userEmail = (credentials as any).client_email || 'service account';
+        logger.info({ email: this.userEmail }, '✅ Autenticado con Service Account');
+        
+        // Buscar carpeta W2M compartida
+        this.w2mFolderId = await this.findSharedW2MFolder();
+        
+        if (this.w2mFolderId) {
+          this.driveEnabled = true;
+          logger.info({ folderId: this.w2mFolderId }, '✅ Google Drive habilitado (Service Account)');
+        } else {
+          logger.warn('⚠️ No se encontró carpeta W2M compartida para Service Account');
+        }
+        return;
+      } catch (error: any) {
+        logger.warn({ error: error.message }, '⚠️ Error con Service Account');
       }
+    }
+
+    logger.info('ℹ️ Google Drive no configurado, usando solo almacenamiento local');
+  }
+
+  /**
+   * Buscar o crear carpeta W2M (para OAuth - usuario tiene cuota)
+   */
+  private async findOrCreateW2MFolder(): Promise<string | null> {
+    try {
+      // Buscar carpeta existente
+      const response = await this.drive.files.list({
+        q: "name='W2M' and mimeType='application/vnd.google-apps.folder' and trashed=false and 'root' in parents",
+        fields: 'files(id, name)',
+        spaces: 'drive',
+      });
+
+      if (response.data.files && response.data.files.length > 0) {
+        logger.info({ folderId: response.data.files[0].id }, '📁 Carpeta W2M encontrada');
+        return response.data.files[0].id!;
+      }
+
+      // Crear carpeta si no existe
+      const createResponse = await this.drive.files.create({
+        requestBody: {
+          name: 'W2M',
+          mimeType: 'application/vnd.google-apps.folder',
+        },
+        fields: 'id, name',
+      });
+
+      logger.info({ folderId: createResponse.data.id }, '📁 Carpeta W2M creada');
+      return createResponse.data.id!;
     } catch (error: any) {
-      logger.warn({ error: error.message }, '⚠️ Error al inicializar Google Drive, usando solo almacenamiento local');
+      logger.error({ error: error.message }, '❌ Error al buscar/crear carpeta W2M');
+      return null;
     }
   }
 
   /**
-   * Buscar carpeta "W2M" que esté COMPARTIDA con la Service Account (no creada por ella)
+   * Buscar carpeta W2M compartida (para Service Account)
    */
   private async findSharedW2MFolder(): Promise<string | null> {
     try {
       const config = getConfig();
       const configuredFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID || (config as any).GOOGLE_DRIVE_FOLDER_ID;
       
-      // Si hay un ID configurado, intentar usarlo
       if (configuredFolderId) {
         try {
-          const response = await this.drive.files.get({
+          await this.drive.files.get({
             fileId: configuredFolderId,
-            fields: 'id, name, owners, shared',
+            fields: 'id, name',
             supportsAllDrives: true,
           });
-          
-          const fileData = response.data;
-          const isOwnedByServiceAccount = fileData.owners?.some((owner: any) => 
-            owner.emailAddress === this.serviceAccountEmail
-          );
-          
-          if (isOwnedByServiceAccount) {
-            logger.warn({ folderId: configuredFolderId }, '⚠️ La carpeta configurada es propiedad de la Service Account (sin cuota)');
-          } else if (fileData.shared) {
-            logger.info({ folderId: configuredFolderId, name: fileData.name }, '📁 Usando carpeta W2M compartida (ID configurado)');
-            return configuredFolderId;
-          } else {
-            logger.warn({ folderId: configuredFolderId }, '⚠️ La carpeta existe pero no está compartida correctamente');
-          }
+          return configuredFolderId;
         } catch (error: any) {
-          logger.warn({ folderId: configuredFolderId, error: error.message }, '⚠️ No se pudo acceder a la carpeta configurada');
+          logger.warn({ error: error.message }, '⚠️ No se pudo acceder a carpeta configurada');
         }
       }
 
-      // Buscar carpeta "W2M" compartida (no propia)
+      // Buscar carpeta compartida
       const response = await this.drive.files.list({
         q: "name='W2M' and mimeType='application/vnd.google-apps.folder' and trashed=false and sharedWithMe=true",
-        fields: 'files(id, name, owners, shared)',
+        fields: 'files(id, name)',
         spaces: 'drive',
         includeItemsFromAllDrives: true,
         supportsAllDrives: true,
       });
 
       if (response.data.files && response.data.files.length > 0) {
-        // Filtrar carpetas que NO sean propiedad de la Service Account
-        for (const folder of response.data.files) {
-          const isOwnedByServiceAccount = folder.owners?.some((owner: any) => 
-            owner.emailAddress === this.serviceAccountEmail
-          );
-          
-          if (!isOwnedByServiceAccount) {
-            logger.info({ 
-              folderId: folder.id, 
-              name: folder.name,
-              shared: folder.shared 
-            }, '📁 Carpeta W2M compartida encontrada');
-            return folder.id!;
-          }
-        }
-      }
-
-      // Última opción: buscar cualquier carpeta W2M accesible (pero no propia)
-      const fallbackResponse = await this.drive.files.list({
-        q: "name='W2M' and mimeType='application/vnd.google-apps.folder' and trashed=false",
-        fields: 'files(id, name, owners)',
-        spaces: 'drive',
-        includeItemsFromAllDrives: true,
-        supportsAllDrives: true,
-      });
-
-      if (fallbackResponse.data.files && fallbackResponse.data.files.length > 0) {
-        for (const folder of fallbackResponse.data.files) {
-          const isOwnedByServiceAccount = folder.owners?.some((owner: any) => 
-            owner.emailAddress === this.serviceAccountEmail
-          );
-          
-          if (!isOwnedByServiceAccount) {
-            logger.info({ folderId: folder.id }, '📁 Carpeta W2M encontrada (verificar permisos)');
-            return folder.id!;
-          } else {
-            logger.warn({ folderId: folder.id }, '⚠️ Carpeta W2M encontrada pero es propiedad de Service Account (no usable)');
-          }
-        }
+        return response.data.files[0].id!;
       }
 
       return null;
     } catch (error: any) {
-      logger.error({ error: error.message }, '❌ Error al buscar carpeta W2M');
+      logger.error({ error: error.message }, '❌ Error al buscar carpeta W2M compartida');
       return null;
     }
   }
 
   /**
-   * Convertir ruta relativa a estructura de carpetas en Drive
+   * Convertir ruta relativa a estructura de carpetas
    */
   private parsePath(relativePath: string): { folders: string[]; filename: string } {
     const parts = relativePath.split('/');
@@ -176,19 +196,15 @@ export class GoogleDriveStorage implements StorageInterface {
       if (!folderName) continue;
 
       try {
-        // Buscar carpeta existente
         const response = await this.drive.files.list({
           q: `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and '${currentParentId}' in parents and trashed=false`,
           fields: 'files(id, name)',
           spaces: 'drive',
-          includeItemsFromAllDrives: true,
-          supportsAllDrives: true,
         });
 
         if (response.data.files && response.data.files.length > 0) {
           currentParentId = response.data.files[0].id!;
         } else {
-          // Crear carpeta dentro de la carpeta compartida
           const createResponse = await this.drive.files.create({
             requestBody: {
               name: folderName,
@@ -196,13 +212,11 @@ export class GoogleDriveStorage implements StorageInterface {
               parents: [currentParentId],
             },
             fields: 'id, name',
-            supportsAllDrives: true,
           });
           currentParentId = createResponse.data.id!;
-          logger.debug({ folderName, parentId: currentParentId }, '📁 Subcarpeta creada en Google Drive');
         }
       } catch (error: any) {
-        logger.error({ error: error.message, folderName }, '❌ Error al crear subcarpeta en Google Drive');
+        logger.error({ error: error.message, folderName }, '❌ Error al crear subcarpeta');
         return null;
       }
     }
@@ -211,7 +225,7 @@ export class GoogleDriveStorage implements StorageInterface {
   }
 
   /**
-   * Buscar archivo por nombre y carpeta padre en Drive
+   * Buscar archivo por nombre y carpeta padre
    */
   private async findFile(filename: string, parentId: string): Promise<string | null> {
     try {
@@ -219,8 +233,6 @@ export class GoogleDriveStorage implements StorageInterface {
         q: `name='${filename}' and '${parentId}' in parents and trashed=false`,
         fields: 'files(id, name)',
         spaces: 'drive',
-        includeItemsFromAllDrives: true,
-        supportsAllDrives: true,
       });
 
       if (response.data.files && response.data.files.length > 0) {
@@ -228,7 +240,7 @@ export class GoogleDriveStorage implements StorageInterface {
       }
 
       return null;
-    } catch (error) {
+    } catch {
       return null;
     }
   }
@@ -245,7 +257,7 @@ export class GoogleDriveStorage implements StorageInterface {
       await fs.writeFile(localPath, content, 'utf-8');
       logger.debug({ path: relativePath }, '💾 Archivo guardado localmente');
     } catch (error: any) {
-      logger.error({ error: error.message, path: relativePath }, '❌ Error al guardar archivo localmente');
+      logger.error({ error: error.message, path: relativePath }, '❌ Error al guardar localmente');
       throw error;
     }
 
@@ -253,19 +265,17 @@ export class GoogleDriveStorage implements StorageInterface {
     if (this.driveEnabled && this.drive && this.w2mFolderId) {
       try {
         await this.syncToDrive(relativePath, content);
-        logger.info({ path: relativePath }, '☁️ Archivo sincronizado a Google Drive');
+        logger.info({ path: relativePath }, '☁️ Sincronizado a Google Drive');
       } catch (error: any) {
-        // No fallar si Drive falla - ya está guardado localmente
         logger.warn({ 
           error: error.message, 
           path: relativePath,
-          hint: 'El archivo está guardado localmente, la sincronización a Drive falló'
-        }, '⚠️ Error al sincronizar a Google Drive');
+        }, '⚠️ Error al sincronizar a Drive (guardado localmente)');
         
         // Deshabilitar Drive si hay errores de cuota
-        if (error.code === 403 && error.message?.includes('quota')) {
+        if (error.code === 403) {
           this.driveEnabled = false;
-          logger.error('❌ Google Drive deshabilitado debido a error de cuota. Verifica que la carpeta W2M esté compartida correctamente.');
+          logger.error('❌ Google Drive deshabilitado debido a error. Verifica permisos.');
         }
       }
     }
@@ -277,28 +287,22 @@ export class GoogleDriveStorage implements StorageInterface {
   private async syncToDrive(relativePath: string, content: string): Promise<void> {
     const { folders, filename } = this.parsePath(relativePath);
     
-    // Crear estructura de carpetas
     const parentId = await this.findOrCreateFolderPath(folders, this.w2mFolderId!);
-    
     if (!parentId) {
-      throw new Error('No se pudo crear la estructura de carpetas en Drive');
+      throw new Error('No se pudo crear estructura de carpetas');
     }
     
-    // Buscar archivo existente
     const existingFileId = await this.findFile(filename, parentId);
     
     if (existingFileId) {
-      // Actualizar archivo existente
       await this.drive.files.update({
         fileId: existingFileId,
         media: {
           mimeType: 'text/markdown',
           body: content,
         },
-        supportsAllDrives: true,
       });
     } else {
-      // Crear nuevo archivo
       await this.drive.files.create({
         requestBody: {
           name: filename,
@@ -310,7 +314,6 @@ export class GoogleDriveStorage implements StorageInterface {
           body: content,
         },
         fields: 'id, name',
-        supportsAllDrives: true,
       });
     }
   }
@@ -321,43 +324,38 @@ export class GoogleDriveStorage implements StorageInterface {
   async readFile(relativePath: string): Promise<string | null> {
     const localPath = path.join(this.localBasePath, relativePath);
     
-    // Intentar leer localmente primero
     try {
-      const content = await fs.readFile(localPath, 'utf-8');
-      return content;
+      return await fs.readFile(localPath, 'utf-8');
     } catch (error: any) {
       if (error.code !== 'ENOENT') {
         logger.error({ error: error.message, path: relativePath }, '❌ Error al leer archivo local');
       }
     }
 
-    // Fallback a Google Drive
     if (this.driveEnabled && this.drive && this.w2mFolderId) {
       try {
         const { folders, filename } = this.parsePath(relativePath);
         const parentId = await this.findOrCreateFolderPath(folders, this.w2mFolderId);
-        
         if (!parentId) return null;
         
         const fileId = await this.findFile(filename, parentId);
-        
         if (!fileId) return null;
 
         const response = await this.drive.files.get(
-          { fileId, alt: 'media', supportsAllDrives: true },
+          { fileId, alt: 'media' },
           { responseType: 'text' }
         );
 
         const content = response.data as string;
         
-        // Guardar localmente para cache
+        // Cache local
         await fs.mkdir(path.dirname(localPath), { recursive: true });
         await fs.writeFile(localPath, content, 'utf-8');
         
         return content;
       } catch (error: any) {
         if (error.code !== 404) {
-          logger.error({ error: error.message, path: relativePath }, '❌ Error al leer archivo de Google Drive');
+          logger.error({ error: error.message, path: relativePath }, '❌ Error al leer de Drive');
         }
       }
     }
@@ -365,24 +363,18 @@ export class GoogleDriveStorage implements StorageInterface {
     return null;
   }
 
-  /**
-   * Verificar si archivo existe (local o Drive)
-   */
   async exists(relativePath: string): Promise<boolean> {
     const localPath = path.join(this.localBasePath, relativePath);
     
-    // Verificar localmente primero
     try {
       await fs.access(localPath);
       return true;
     } catch {}
 
-    // Verificar en Drive
     if (this.driveEnabled && this.drive && this.w2mFolderId) {
       try {
         const { folders, filename } = this.parsePath(relativePath);
         const parentId = await this.findOrCreateFolderPath(folders, this.w2mFolderId);
-        
         if (!parentId) return false;
         
         const fileId = await this.findFile(filename, parentId);
@@ -395,50 +387,39 @@ export class GoogleDriveStorage implements StorageInterface {
     return false;
   }
 
-  /**
-   * Eliminar archivo (local y Drive)
-   */
   async deleteFile(relativePath: string): Promise<void> {
     const localPath = path.join(this.localBasePath, relativePath);
     
-    // Eliminar localmente
     try {
       await fs.unlink(localPath);
       logger.debug({ path: relativePath }, '🗑️ Archivo eliminado localmente');
     } catch (error: any) {
       if (error.code !== 'ENOENT') {
-        logger.warn({ error: error.message, path: relativePath }, '⚠️ Error al eliminar archivo local');
+        logger.warn({ error: error.message, path: relativePath }, '⚠️ Error al eliminar localmente');
       }
     }
 
-    // Eliminar de Drive
     if (this.driveEnabled && this.drive && this.w2mFolderId) {
       try {
         const { folders, filename } = this.parsePath(relativePath);
         const parentId = await this.findOrCreateFolderPath(folders, this.w2mFolderId);
-        
         if (!parentId) return;
         
         const fileId = await this.findFile(filename, parentId);
-        
         if (fileId) {
-          await this.drive.files.delete({ fileId, supportsAllDrives: true });
-          logger.debug({ path: relativePath }, '🗑️ Archivo eliminado de Google Drive');
+          await this.drive.files.delete({ fileId });
+          logger.debug({ path: relativePath }, '🗑️ Archivo eliminado de Drive');
         }
       } catch (error: any) {
-        logger.warn({ error: error.message, path: relativePath }, '⚠️ Error al eliminar archivo de Google Drive');
+        logger.warn({ error: error.message, path: relativePath }, '⚠️ Error al eliminar de Drive');
       }
     }
   }
 
-  /**
-   * Listar archivos (combina local y Drive)
-   */
   async listFiles(relativePath: string): Promise<string[]> {
     const localPath = path.join(this.localBasePath, relativePath);
     const files = new Set<string>();
     
-    // Listar localmente
     try {
       const entries = await fs.readdir(localPath, { withFileTypes: true });
       for (const entry of entries) {
@@ -448,11 +429,10 @@ export class GoogleDriveStorage implements StorageInterface {
       }
     } catch (error: any) {
       if (error.code !== 'ENOENT') {
-        logger.error({ error: error.message, path: relativePath }, '❌ Error al listar archivos locales');
+        logger.error({ error: error.message, path: relativePath }, '❌ Error al listar archivos');
       }
     }
 
-    // Listar de Drive
     if (this.driveEnabled && this.drive && this.w2mFolderId) {
       try {
         const { folders } = this.parsePath(relativePath);
@@ -463,8 +443,6 @@ export class GoogleDriveStorage implements StorageInterface {
             q: `'${parentId}' in parents and trashed=false`,
             fields: 'files(id, name, mimeType)',
             spaces: 'drive',
-            includeItemsFromAllDrives: true,
-            supportsAllDrives: true,
           });
 
           if (response.data.files) {
@@ -476,7 +454,7 @@ export class GoogleDriveStorage implements StorageInterface {
           }
         }
       } catch (error: any) {
-        logger.warn({ error: error.message, path: relativePath }, '⚠️ Error al listar archivos de Google Drive');
+        logger.warn({ error: error.message, path: relativePath }, '⚠️ Error al listar de Drive');
       }
     }
 
@@ -484,20 +462,34 @@ export class GoogleDriveStorage implements StorageInterface {
   }
 
   /**
-   * Verificar estado de Google Drive
+   * Obtener estado del storage
    */
-  isDriveEnabled(): boolean {
-    return this.driveEnabled;
-  }
-
-  /**
-   * Obtener información del estado
-   */
-  getStatus(): { local: boolean; drive: boolean; driveFolder: string | null } {
+  getStatus(): { 
+    local: boolean; 
+    drive: boolean; 
+    authMethod: string; 
+    userEmail: string;
+    folderId: string | null;
+  } {
     return {
       local: true,
       drive: this.driveEnabled,
-      driveFolder: this.w2mFolderId,
+      authMethod: this.authMethod,
+      userEmail: this.userEmail,
+      folderId: this.w2mFolderId,
     };
+  }
+
+  /**
+   * Reinicializar conexión a Drive (después de autorizar OAuth)
+   */
+  async reinitializeDrive(): Promise<void> {
+    this.drive = null;
+    this.w2mFolderId = null;
+    this.driveEnabled = false;
+    this.authMethod = 'none';
+    this.userEmail = '';
+    
+    await this.initializeGoogleDrive();
   }
 }

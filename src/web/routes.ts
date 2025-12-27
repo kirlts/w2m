@@ -261,77 +261,148 @@ export function setupRoutes(app: Hono, context: WebServerContext): void {
     }
   });
 
-  // API: Estado de Google Drive Storage
+  // API: Estado de Google Drive Storage (ahora con OAuth)
   app.get('/web/api/storage/status', async (c) => {
-    logger.info({}, '🔍 [DEBUG] /web/api/storage/status - Request recibido');
     try {
-      const config = getConfig();
-      logger.info({ STORAGE_TYPE: config.STORAGE_TYPE }, '🔍 [DEBUG] Config obtenido');
+      // Obtener estado del storage directamente
+      const storageStatus = (storage as any).getStatus?.() || { local: true, drive: false, authMethod: 'none' };
       
-      // Leer STORAGE_TYPE directamente de process.env para evitar problemas con defaults
-      const storageType = process.env.STORAGE_TYPE || config.STORAGE_TYPE || 'local';
-      logger.info({ storageType, envSTORAGE_TYPE: process.env.STORAGE_TYPE, configSTORAGE_TYPE: config.STORAGE_TYPE }, '🔍 [DEBUG] Storage type determinado');
-      
-      let status = storageType;
-      let configured = false;
-      let message = '';
-      
-      if (storageType === 'googledrive') {
-        logger.info({}, '🔍 [DEBUG] Verificando Google Drive Service Account');
-        // Verificar directamente si el archivo Service Account existe
-        // Esto evita problemas con imports dinámicos en código compilado
-        const serviceAccountPath = config.GOOGLE_SERVICE_ACCOUNT_PATH || process.env.GOOGLE_SERVICE_ACCOUNT_PATH;
-        logger.info({ serviceAccountPath }, '🔍 [DEBUG] Service Account path obtenido');
-        
-        if (serviceAccountPath) {
-          try {
-            logger.info({ path: serviceAccountPath }, '🔍 [DEBUG] Importando fs para verificar archivo');
-            const { existsSync } = await import('fs');
-            logger.info({}, '🔍 [DEBUG] fs importado, verificando existencia');
-            const fileExists = existsSync(serviceAccountPath);
-            logger.info({ fileExists, path: serviceAccountPath }, '🔍 [DEBUG] Resultado de existsSync');
-            
-            if (fileExists) {
-              configured = true;
-              message = 'Google Drive configurado con Service Account';
-              logger.info({}, '🔍 [DEBUG] Service Account configurado correctamente');
-            } else {
-              configured = false;
-              message = `Archivo Service Account no encontrado: ${serviceAccountPath}`;
-              logger.warn({ path: serviceAccountPath }, '🔍 [DEBUG] Archivo Service Account no encontrado');
-            }
-          } catch (fsError: any) {
-            configured = false;
-            message = `Error al verificar archivo: ${fsError.message}`;
-            logger.error({ error: fsError.message, stack: fsError.stack }, '🔍 [DEBUG] Error al verificar archivo');
-          }
-        } else {
-          configured = false;
-          message = 'Google Drive no está configurado. Configura GOOGLE_SERVICE_ACCOUNT_PATH en .env';
-          logger.warn({}, '🔍 [DEBUG] GOOGLE_SERVICE_ACCOUNT_PATH no configurado');
-        }
-      } else {
-        status = 'local';
-        message = 'Almacenamiento local activo';
-        configured = true;
-        logger.info({}, '🔍 [DEBUG] Usando almacenamiento local');
-      }
-      
-      const response = {
-        storageType: status,
-        configured,
-        message,
-        serviceAccountPath: config.GOOGLE_SERVICE_ACCOUNT_PATH || process.env.GOOGLE_SERVICE_ACCOUNT_PATH || null,
-      };
-      logger.info({ response }, '🔍 [DEBUG] Retornando respuesta de storage status');
-      return c.json(response);
+      return c.json({
+        local: storageStatus.local,
+        drive: storageStatus.drive,
+        authMethod: storageStatus.authMethod,
+        userEmail: storageStatus.userEmail || null,
+        folderId: storageStatus.folderId || null,
+      });
     } catch (error: any) {
-      logger.error({ error: error.message, stack: error.stack }, '❌ [DEBUG] Error al obtener estado de storage');
+      logger.error({ error: error.message }, '❌ Error al obtener estado de storage');
       return c.json({ 
-        storageType: 'local',
-        configured: false,
+        local: true,
+        drive: false,
+        authMethod: 'none',
         error: error.message 
       }, 500);
+    }
+  });
+
+  // ============ OAuth para Google Drive ============
+
+  // API: Verificar si OAuth está configurado
+  app.get('/web/api/oauth/status', async (c) => {
+    try {
+      const { isOAuthConfigured, hasOAuthTokens, getAuthenticatedUserInfo } = await import('../plugins/storage/googledrive/oauth.js');
+      
+      const configured = await isOAuthConfigured();
+      const hasTokens = await hasOAuthTokens();
+      let userInfo = null;
+      
+      if (hasTokens) {
+        userInfo = await getAuthenticatedUserInfo();
+      }
+      
+      return c.json({
+        configured,
+        authorized: hasTokens,
+        user: userInfo,
+      });
+    } catch (error: any) {
+      return c.json({
+        configured: false,
+        authorized: false,
+        error: error.message,
+      });
+    }
+  });
+
+  // API: Obtener URL de autorización
+  app.get('/web/api/oauth/authorize', async (c) => {
+    try {
+      const { isOAuthConfigured, getAuthorizationUrl } = await import('../plugins/storage/googledrive/oauth.js');
+      
+      const configured = await isOAuthConfigured();
+      
+      if (!configured) {
+        return c.json({
+          error: 'OAuth no configurado. Sube el archivo oauth-credentials.json a ./data/googledrive/',
+          instructions: [
+            '1. Ve a Google Cloud Console → APIs & Services → Credentials',
+            '2. Crea un OAuth 2.0 Client ID (tipo: Desktop app)',
+            '3. Descarga el JSON',
+            '4. Sube el archivo como: ./data/googledrive/oauth-credentials.json',
+            '5. Reinicia el contenedor',
+          ],
+        }, 400);
+      }
+      
+      const authUrl = await getAuthorizationUrl();
+      
+      return c.json({
+        authUrl,
+        instructions: [
+          '1. Abre la URL en tu navegador',
+          '2. Inicia sesión con tu cuenta de Google',
+          '3. Autoriza el acceso a Google Drive',
+          '4. Copia el código que aparece',
+          '5. Pégalo en el campo de abajo',
+        ],
+      });
+    } catch (error: any) {
+      logger.error({ error: error.message }, '❌ Error al generar URL de autorización');
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  // API: Intercambiar código por tokens
+  app.post('/web/api/oauth/callback', async (c) => {
+    try {
+      const { code } = await c.req.json();
+      
+      if (!code) {
+        return c.json({ error: 'Código de autorización requerido' }, 400);
+      }
+      
+      const { exchangeCodeForTokens } = await import('../plugins/storage/googledrive/oauth.js');
+      
+      await exchangeCodeForTokens(code.trim());
+      
+      // Reinicializar storage con OAuth
+      if ((storage as any).reinitializeDrive) {
+        await (storage as any).reinitializeDrive();
+      }
+      
+      logger.info({}, '✅ [Dashboard] OAuth autorizado correctamente');
+      
+      return c.json({
+        success: true,
+        message: '¡Autorización exitosa! Google Drive está ahora conectado.',
+      });
+    } catch (error: any) {
+      logger.error({ error: error.message }, '❌ Error al intercambiar código');
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  // API: Revocar tokens (logout de Google Drive)
+  app.post('/web/api/oauth/revoke', async (c) => {
+    try {
+      const { revokeTokens } = await import('../plugins/storage/googledrive/oauth.js');
+      
+      await revokeTokens();
+      
+      // Reinicializar storage sin OAuth
+      if ((storage as any).reinitializeDrive) {
+        await (storage as any).reinitializeDrive();
+      }
+      
+      logger.info({}, '🔌 [Dashboard] Sesión de Google Drive cerrada');
+      
+      return c.json({
+        success: true,
+        message: 'Sesión de Google Drive cerrada',
+      });
+    } catch (error: any) {
+      logger.error({ error: error.message }, '❌ Error al revocar tokens');
+      return c.json({ error: error.message }, 500);
     }
   });
 }
