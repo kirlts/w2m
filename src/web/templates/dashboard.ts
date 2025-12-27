@@ -345,11 +345,19 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
   </div>
 
   <script>
-    // SSE para logs
+    // SSE para logs (puede iniciarse inmediatamente)
     const logsEventSource = new EventSource('/web/api/logs/stream');
-    const logsContainer = document.getElementById('logs-container');
     
-    logsEventSource.addEventListener('log', (e) => {
+    // Esperar a que el DOM esté listo
+    document.addEventListener('DOMContentLoaded', function() {
+      const logsContainer = document.getElementById('logs-container');
+      
+      if (!logsContainer) {
+        console.error('logs-container no encontrado');
+        return;
+      }
+      
+      logsEventSource.addEventListener('log', (e) => {
       const data = JSON.parse(e.data);
       const logEntry = document.createElement('div');
       logEntry.className = 'log-entry';
@@ -789,6 +797,7 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
         guideEl.classList.remove('hidden');
       }
     };
+    }); // Cerrar DOMContentLoaded
   </script>
 </body>
 </html>`;
