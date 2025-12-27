@@ -354,11 +354,11 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
       
       if (logsContainer) {
         logsEventSource.addEventListener('log', (e) => {
-      const data = JSON.parse(e.data);
-      const logEntry = document.createElement('div');
-      logEntry.className = 'log-entry';
-      logEntry.textContent = \`[\${new Date(data.timestamp).toLocaleTimeString()}] \${data.message}\`;
-      logsContainer.appendChild(logEntry);
+          const data = JSON.parse(e.data);
+          const logEntry = document.createElement('div');
+          logEntry.className = 'log-entry';
+          logEntry.textContent = \`[\${new Date(data.timestamp).toLocaleTimeString()}] \${data.message}\`;
+          logsContainer.appendChild(logEntry);
           logsContainer.scrollTop = logsContainer.scrollHeight;
         });
 
@@ -422,18 +422,53 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
       }
     });
 
-    // Actualizar estado cada 2 segundos
-    setInterval(() => {
-      fetch('/web/api/status')
-        .then(res => res.json())
-        .then(data => {
-          const statusEl = document.getElementById('connection-status');
+    // Cargar estado de conexión una sola vez al inicio
+    // (Se actualiza automáticamente cuando el usuario hace acciones como conectar/desconectar)
+    fetch('/web/api/status')
+      .then(res => res.json())
+      .then(data => {
+        const statusEl = document.getElementById('connection-status');
+        if (statusEl) {
           statusEl.innerHTML = \`
             <span class="text-2xl">\${data.isConnected ? '✅' : '❌'}</span>
             <span class="text-lg font-medium">\${data.state === 'connected' ? 'Conectado' : data.state === 'connecting' ? 'Conectando...' : 'Desconectado'}</span>
           \`;
-        });
-    }, 2000);
+        }
+      });
+
+    // Cargar estado de Google Drive Storage una sola vez al inicio
+    // (No necesita polling - el estado solo cambia cuando se configura Service Account)
+    fetch('/web/api/storage/status')
+      .then(res => res.json())
+      .then(data => {
+        const statusEl = document.getElementById('storage-status');
+        const actionsEl = document.getElementById('storage-actions');
+        const infoEl = document.getElementById('storage-info');
+        
+        if (statusEl) {
+          if (data.configured) {
+            statusEl.innerHTML = \`
+              <p class="text-green-600 font-medium">✅ \${data.message || 'Google Drive configurado'}</p>
+              <p class="text-sm text-gray-500 mt-1">Tipo: \${data.storageType}</p>
+            \`;
+          } else {
+            statusEl.innerHTML = \`
+              <p class="text-yellow-600 font-medium">⚠️ \${data.message || 'Google Drive no configurado'}</p>
+              <p class="text-sm text-gray-500 mt-1">Tipo: \${data.storageType}</p>
+            \`;
+          }
+        }
+        
+        if (infoEl && data.serviceAccountPath) {
+          infoEl.innerHTML = \`<p class="text-xs">Ruta: <code class="bg-gray-100 px-1 rounded">\${data.serviceAccountPath}</code></p>\`;
+        }
+      })
+      .catch(err => {
+        const statusEl = document.getElementById('storage-status');
+        if (statusEl) {
+          statusEl.innerHTML = \`<p class="text-red-500">❌ Error al verificar estado: \${err.message}</p>\`;
+        }
+      });
 
     // Cargar grupos disponibles cuando se abre el modal
     function loadAvailableGroups() {
@@ -545,45 +580,6 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
     // Exponer funciones globalmente
     window.addGroup = addGroup;
     window.loadAvailableGroups = loadAvailableGroups;
-
-    // Actualizar estado de Google Drive Storage
-    function updateStorageStatus() {
-      fetch('/web/api/storage/status')
-        .then(res => res.json())
-        .then(data => {
-          const statusEl = document.getElementById('storage-status');
-          const actionsEl = document.getElementById('storage-actions');
-          const infoEl = document.getElementById('storage-info');
-          
-          if (statusEl) {
-            if (data.configured) {
-              statusEl.innerHTML = \`
-                <p class="text-green-600 font-medium">✅ \${data.message || 'Google Drive configurado'}</p>
-                <p class="text-sm text-gray-500 mt-1">Tipo: \${data.storageType}</p>
-              \`;
-            } else {
-              statusEl.innerHTML = \`
-                <p class="text-yellow-600 font-medium">⚠️ \${data.message || 'Google Drive no configurado'}</p>
-                <p class="text-sm text-gray-500 mt-1">Tipo: \${data.storageType}</p>
-              \`;
-            }
-          }
-          
-          if (infoEl && data.serviceAccountPath) {
-            infoEl.innerHTML = \`<p class="text-xs">Ruta: <code class="bg-gray-100 px-1 rounded">\${data.serviceAccountPath}</code></p>\`;
-          }
-        })
-        .catch(err => {
-          const statusEl = document.getElementById('storage-status');
-          if (statusEl) {
-            statusEl.innerHTML = \`<p class="text-red-500">❌ Error al verificar estado: \${err.message}</p>\`;
-          }
-        });
-    }
-    
-      // Actualizar inmediatamente y luego cada 5 segundos
-      updateStorageStatus();
-      setInterval(updateStorageStatus, 5000);
 
 
     // ==========================================
@@ -788,12 +784,12 @@ export async function getDashboardHTML(context: WebServerContext): Promise<strin
         guideEl.classList.remove('hidden');
       }
     };
-      window.showGoogleDriveSetup = function() {
-        const guideEl = document.getElementById('storage-setup-guide');
-        if (guideEl) {
-          guideEl.classList.remove('hidden');
-        }
-      };
+    window.showGoogleDriveSetup = function() {
+      const guideEl = document.getElementById('storage-setup-guide');
+      if (guideEl) {
+        guideEl.classList.remove('hidden');
+      }
+    };
     }
     
     // Ejecutar inmediatamente si el DOM ya está listo, o esperar
