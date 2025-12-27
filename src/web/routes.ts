@@ -237,25 +237,30 @@ export function setupRoutes(app: Hono, context: WebServerContext): void {
   app.get('/web/api/storage/status', async (c) => {
     try {
       const config = getConfig();
-      // @ts-ignore - Dynamic import resolved at runtime
-      const { isServiceAccountConfigured } = await import('../../plugins/storage/googledrive/service-account.js');
+      // Leer STORAGE_TYPE directamente de process.env para evitar problemas con defaults
+      const storageType = process.env.STORAGE_TYPE || config.STORAGE_TYPE || 'local';
       
-      const storageType = config.STORAGE_TYPE || 'local';
-      let status = 'local';
+      let status = storageType;
       let configured = false;
       let message = '';
       
       if (storageType === 'googledrive') {
-        const serviceAccountConfigured = isServiceAccountConfigured();
-        
-        if (serviceAccountConfigured) {
-          status = 'googledrive';
-          configured = true;
-          message = 'Google Drive configurado con Service Account';
-        } else {
-          status = 'googledrive';
+        try {
+          // @ts-ignore - Dynamic import resolved at runtime
+          const { isServiceAccountConfigured } = await import('../../plugins/storage/googledrive/service-account.js');
+          const serviceAccountConfigured = isServiceAccountConfigured();
+          
+          if (serviceAccountConfigured) {
+            configured = true;
+            message = 'Google Drive configurado con Service Account';
+          } else {
+            configured = false;
+            message = 'Google Drive no está configurado. Configura Service Account (ver guía en el dashboard).';
+          }
+        } catch (importError: any) {
+          // Si no se puede importar el módulo, asumir que no está configurado
           configured = false;
-          message = 'Google Drive no está configurado. Configura Service Account (ver guía en el dashboard).';
+          message = `Error al verificar Service Account: ${importError.message}`;
         }
       } else {
         status = 'local';
@@ -267,9 +272,10 @@ export function setupRoutes(app: Hono, context: WebServerContext): void {
         storageType: status,
         configured,
         message,
-        serviceAccountPath: config.GOOGLE_SERVICE_ACCOUNT_PATH || null,
+        serviceAccountPath: config.GOOGLE_SERVICE_ACCOUNT_PATH || process.env.GOOGLE_SERVICE_ACCOUNT_PATH || null,
       });
     } catch (error: any) {
+      logger.error({ error: error.message }, 'Error al obtener estado de storage');
       return c.json({ 
         storageType: 'local',
         configured: false,
