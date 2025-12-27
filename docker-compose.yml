@@ -68,6 +68,9 @@ services:
       # Application logs
       - ./data/logs:/app/data/logs
       
+      # Google Drive Service Account credentials
+      - ./data/googledrive:/app/data/googledrive:ro
+      
       # Git configuration (if using SSH)
       - ~/.ssh:/home/w2m/.ssh:ro
       - ~/.gitconfig:/home/w2m/.gitconfig:ro
@@ -80,9 +83,13 @@ services:
       # Only used when BUILD_TARGET=development
       - ./src:/app/src:ro
     
-    # Development only: expose debugger port
-    # Only used when BUILD_TARGET=development
+    # Ports
     ports:
+      # Web Dashboard
+      - "${WEB_PORT:-3000}:3000"
+      
+      # Development only: expose debugger port
+      # Only used when BUILD_TARGET=development
       - "${DEBUG_PORT:-9229}:9229"
     
     # Health check

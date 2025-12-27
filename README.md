@@ -326,8 +326,34 @@ W2M includes a lightweight web dashboard for easy management without SSH access.
 
 ### Accessing the Dashboard
 
+#### After CI/CD Deployment (EC2)
+
+Once your CI/CD pipeline has deployed W2M to EC2, follow these steps:
+
+1. **Get your EC2 Public IP**:
+   - Go to [AWS EC2 Console](https://console.aws.amazon.com/ec2/)
+   - Find your instance
+   - Copy the **Public IPv4 address** (e.g., `52.54.190.237`)
+
+2. **Configure Security Group** (if not already done):
+   - Select your EC2 instance → **Security** tab → Click **Security groups**
+   - Click **Edit inbound rules**
+   - Click **Add rule**:
+     - **Type**: Custom TCP
+     - **Port**: `3000`
+     - **Source**: Your IP address (or `0.0.0.0/0` for any IP - less secure)
+   - Click **Save rules**
+
+3. **Access the Dashboard**:
+   - Open your browser
+   - Navigate to: `http://YOUR-EC2-IP:3000/web`
+   - Example: `http://52.54.190.237:3000/web`
+
+**⚠️ Security Note**: Using `0.0.0.0/0` allows access from any IP. For better security, use your specific IP address or use a VPN.
+
+#### Local Development
+
 - **Local**: `http://localhost:3000/web`
-- **EC2**: `http://your-ec2-ip:3000/web` (requires port 3000 open in Security Group)
 
 ### Dashboard Features
 
@@ -337,14 +363,37 @@ W2M includes a lightweight web dashboard for easy management without SSH access.
 - **Group Management**: Add/remove monitored groups
 - **Category Management**: Create, configure, and delete categories
 - **Markdown Viewer**: View and copy category markdown content
+- **Google Drive Status**: Check Google Drive sync configuration and status
 
-### AWS EC2 Configuration
+### Troubleshooting Access
 
-To access the dashboard from your browser, add an inbound rule to your EC2 Security Group:
+**Can't access the dashboard?**
 
-| Type | Protocol | Port Range | Source |
-|------|----------|------------|--------|
-| Custom TCP | TCP | 3000 | Your IP or 0.0.0.0/0 |
+1. **Check if the container is running**:
+   ```bash
+   ssh -i your-key.pem ubuntu@your-ec2-ip
+   docker-compose ps
+   ```
+
+2. **Check logs**:
+   ```bash
+   docker-compose logs w2m
+   ```
+
+3. **Verify Security Group**:
+   - Ensure port 3000 is open in the Security Group
+   - Check that your IP is allowed (or 0.0.0.0/0)
+
+4. **Verify WEB_ENABLED**:
+   - Check your `.env` file: `WEB_ENABLED=true`
+   - Restart if needed: `docker-compose restart w2m`
+
+5. **Check firewall on EC2**:
+   ```bash
+   sudo ufw status
+   # If enabled, allow port 3000:
+   sudo ufw allow 3000/tcp
+   ```
 
 ## 📁 Message Categories
 
