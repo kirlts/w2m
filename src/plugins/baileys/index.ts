@@ -195,11 +195,13 @@ export class BaileysIngestor implements IngestorInterface {
         this.shouldDisplayQR = false; // Resetear flag cuando se conecta
         
         this.isInitialSync = true;
+        logger.info('🔄 Iniciando sincronización inicial (ignorando mensajes históricos por 3 segundos)');
         if (this.initialSyncTimeout) clearTimeout(this.initialSyncTimeout);
         this.initialSyncTimeout = setTimeout(() => {
           this.isInitialSync = false;
           this.initialSyncTimeout = null;
-        }, 5000);
+          logger.info('✅ Sincronización inicial completada, procesando mensajes nuevos');
+        }, 3000); // Reducido de 5 a 3 segundos
         
         this.connectionCallbacks.forEach(callback => callback());
         this.connectionCallbacks.clear();
@@ -211,6 +213,8 @@ export class BaileysIngestor implements IngestorInterface {
     this.socket.ev.on('messages.upsert', async (m) => {
       const messages = m.messages;
       
+      logger.debug({ messageCount: messages.length, isInitialSync: this.isInitialSync }, '📨 Mensajes recibidos');
+      
       for (const message of messages) {
         const remoteJid = message.key?.remoteJid;
         const messageId = message.key?.id;
@@ -218,28 +222,44 @@ export class BaileysIngestor implements IngestorInterface {
         const messageTimestamp = message.messageTimestamp;
         
         const now = Date.now() / 1000;
+        const messageAge = typeof messageTimestamp === 'number' ? (now - messageTimestamp) : null;
         const isHistoryMessage = 
           this.isInitialSync ||
           !messageTimestamp ||
-          (typeof messageTimestamp === 'number' && (now - messageTimestamp) > 120);
+          (messageAge !== null && messageAge > 120);
         
         if (isHistoryMessage) {
+          logger.debug({ 
+            isInitialSync: this.isInitialSync, 
+            hasTimestamp: !!messageTimestamp,
+            age: messageAge !== null ? messageAge : 'N/A',
+            remoteJid 
+          }, '⏭️ Mensaje histórico ignorado');
           continue;
         }
         
         if (!remoteJid || !remoteJid.endsWith('@g.us')) {
+          logger.debug({ remoteJid }, '⏭️ Mensaje no es de grupo, ignorado');
           continue;
         }
 
         try {
-          if (!this.socket) continue;
+          if (!this.socket) {
+            logger.warn('Socket no disponible, ignorando mensaje');
+            continue;
+          }
           
           const groupMetadata = await this.socket.groupMetadata(remoteJid);
           const groupName = groupMetadata.subject || 'Sin nombre';
           
+          logger.debug({ groupName, remoteJid }, '📨 Procesando mensaje de grupo');
+          
           if (!this.groupManager.isMonitored(groupName)) {
+            logger.debug({ groupName }, '⏭️ Grupo no monitoreado, ignorando mensaje');
             continue;
           }
+          
+          logger.debug({ groupName }, '✅ Grupo monitoreado, procesando mensaje');
           const messageContent = this.extractMessageContent(message);
           
           const senderJid = fromMe 
@@ -276,15 +296,24 @@ export class BaileysIngestor implements IngestorInterface {
             content: messageContent || '[Mensaje sin texto]',
           };
           
+          logger.debug({ 
+            group: messageData.group, 
+            sender: messageData.sender,
+            contentLength: messageData.content.length,
+            callbackCount: this.messageCallbacks.size
+          }, '📤 Enviando mensaje a callbacks');
+          
           this.messageCallbacks.forEach((callback) => {
             try {
               callback(messageData);
             } catch (error) {
-              logger.error({ error }, 'Error en callback de mensaje');
+              logger.error({ error, stack: (error as any)?.stack }, '❌ Error en callback de mensaje');
             }
           });
+          
+          logger.debug({ group: messageData.group }, '✅ Mensaje procesado correctamente');
         } catch (error) {
-          logger.warn({ error, remoteJid }, 'Error al procesar mensaje del grupo');
+          logger.error({ error, remoteJid, stack: (error as any)?.stack }, '❌ Error al procesar mensaje del grupo');
         }
       }
     });
