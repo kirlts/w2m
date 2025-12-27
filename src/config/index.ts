@@ -37,6 +37,9 @@ const configSchema = z.object({
   
   // Memory
   NODE_MAX_OLD_SPACE: z.coerce.number().default(1024),
+  
+  // Timezone
+  TZ: z.string().default('America/Santiago'),
 });
 
 export type Config = z.infer<typeof configSchema>;

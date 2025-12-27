@@ -53,7 +53,7 @@ services:
     environment:
       - NODE_OPTIONS=--max-old-space-size=${NODE_MAX_OLD_SPACE:-1024}
       - NODE_ENV=${NODE_ENV:-production}
-      - TZ=UTC
+      - TZ=${TZ:-America/Santiago}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - LOG_FORMAT=${LOG_FORMAT:-json}
     
@@ -71,6 +71,10 @@ services:
       # Git configuration (if using SSH)
       - ~/.ssh:/home/w2m/.ssh:ro
       - ~/.gitconfig:/home/w2m/.gitconfig:ro
+      
+      # Timezone: mount host timezone if available (fallback to TZ env var)
+      # Comment out if you prefer using only TZ environment variable
+      - /etc/localtime:/etc/localtime:ro
       
       # Development only: mount source code for hot-reload
       # Only used when BUILD_TARGET=development

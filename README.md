@@ -411,6 +411,26 @@ docker-compose up -d --remove-orphans
 
 The container is configured to use a maximum of 1536MB RAM, optimized for EC2 Free Tier instances (t3.small).
 
+### Timezone Configuration
+
+By default, the container uses `America/Santiago` timezone. To change it:
+
+1. **Set TZ environment variable** in your `.env` file:
+   ```env
+   TZ=America/New_York
+   ```
+
+2. **Or use your system timezone** - The docker-compose.yml mounts `/etc/localtime` from the host, which will automatically use your system's timezone if available.
+
+Common timezones:
+- `America/Santiago` - Chile
+- `America/New_York` - US Eastern
+- `America/Los_Angeles` - US Pacific
+- `Europe/Madrid` - Spain
+- `Europe/London` - UK
+
+See [List of tz database time zones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) for all available timezones.
+
 ## 📊 System Requirements
 
 | Resource | Minimum | Recommended |
