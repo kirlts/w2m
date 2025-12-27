@@ -238,24 +238,24 @@ export class W2MCLI {
     }
     
     console.log('Opciones:');
-    console.log('  a) Listar grupos disponibles y agregar');
-    console.log('  b) Remover grupo monitoreado');
-    console.log('  c) Volver al menú principal\n');
+    console.log('  1) Listar grupos disponibles y agregar');
+    console.log('  2) Remover grupo monitoreado');
+    console.log('  3) Volver al menú principal\n');
     
-    this.rl.question('Selecciona una opción (a/b/c): ', async (answer) => {
-      const trimmed = answer.trim().toLowerCase();
+    this.rl.question('Selecciona una opción (1-3): ', async (answer) => {
+      const trimmed = answer.trim();
       process.stdout.write('\r' + ' '.repeat(80) + '\r');
       
-      if (trimmed === 'a') {
+      if (trimmed === '1') {
         await this.addGroup();
-      } else if (trimmed === 'b') {
+      } else if (trimmed === '2') {
         await this.removeGroup();
-      } else if (trimmed === 'c') {
+      } else if (trimmed === '3') {
         this.showMenu();
         this.prompt();
         return;
       } else {
-        console.log('❌ Opción inválida.\n');
+        console.log('❌ Opción inválida. Por favor selecciona 1-3.\n');
         this.prompt();
         return;
       }
@@ -283,34 +283,52 @@ export class W2MCLI {
       });
 
       console.log('═══════════════════════════════════════════════════════\n');
+      
+      this.rl.question('\nSelecciona el número del grupo a agregar (o Enter para cancelar): ', async (answer) => {
+        const trimmed = answer.trim();
+        process.stdout.write('\r' + ' '.repeat(80) + '\r');
+        
+        if (!trimmed) {
+          this.showMenu();
+          this.prompt();
+          return;
+        }
+
+        const groupIndex = parseInt(trimmed, 10) - 1;
+        
+        if (isNaN(groupIndex) || groupIndex < 0 || groupIndex >= groups.length) {
+          console.log('❌ Número inválido. Por favor selecciona un número de la lista.\n');
+          this.showMenu();
+          this.prompt();
+          return;
+        }
+
+        const selectedGroup = groups[groupIndex];
+        const groupName = selectedGroup.name;
+        
+        // Verificar si ya está monitoreado
+        if (monitoredNames.has(groupName.toLowerCase())) {
+          console.log(`⚠️  El grupo "${groupName}" ya está siendo monitoreado.\n`);
+          this.showMenu();
+          this.prompt();
+          return;
+        }
+
+        const added = await this.groupManager.addGroup(groupName, selectedGroup.jid);
+        
+        if (added) {
+          console.log(`✅ Grupo "${groupName}" agregado a monitoreo.\n`);
+        }
+        
+        this.showMenu();
+        this.prompt();
+      });
     } catch (error) {
       console.log('\n⚠️  No estás conectado. Conecta primero con la opción 1.\n');
       this.showMenu();
       this.prompt();
       return;
     }
-    
-    this.rl.question('\nIngresa el nombre exacto del grupo a agregar (o Enter para cancelar): ', async (answer) => {
-      const groupName = answer.trim();
-      process.stdout.write('\r' + ' '.repeat(80) + '\r');
-      
-      if (!groupName) {
-        this.showMenu();
-        this.prompt();
-        return;
-      }
-
-      const added = await this.groupManager.addGroup(groupName);
-      
-      if (added) {
-        console.log(`✅ Grupo "${groupName}" agregado a monitoreo.\n`);
-      } else {
-        console.log(`⚠️  El grupo "${groupName}" ya está siendo monitoreado.\n`);
-      }
-      
-      this.showMenu();
-      this.prompt();
-    });
   }
 
   private async removeGroup(): Promise<void> {
@@ -323,28 +341,42 @@ export class W2MCLI {
       return;
     }
 
-    console.log('\nGrupos monitoreados:');
+    console.log('\n═══════════════════════════════════════════════════════');
+    console.log('📋 Grupos Monitoreados:');
+    console.log('═══════════════════════════════════════════════════════\n');
     monitoredGroups.forEach((group, index) => {
-      console.log(`  ${index + 1}. ${group.name}`);
+      console.log(`${index + 1}. ${group.name}`);
     });
     console.log('');
 
-    this.rl.question('Ingresa el nombre del grupo a remover (o Enter para cancelar): ', async (answer) => {
-      const groupName = answer.trim();
+    this.rl.question('Selecciona el número del grupo a remover (o Enter para cancelar): ', async (answer) => {
+      const trimmed = answer.trim();
       process.stdout.write('\r' + ' '.repeat(80) + '\r');
       
-      if (!groupName) {
+      if (!trimmed) {
         this.showMenu();
         this.prompt();
         return;
       }
+
+      const groupIndex = parseInt(trimmed, 10) - 1;
+      
+      if (isNaN(groupIndex) || groupIndex < 0 || groupIndex >= monitoredGroups.length) {
+        console.log('❌ Número inválido. Por favor selecciona un número de la lista.\n');
+        this.showMenu();
+        this.prompt();
+        return;
+      }
+
+      const selectedGroup = monitoredGroups[groupIndex];
+      const groupName = selectedGroup.name;
 
       const removed = await this.groupManager.removeGroup(groupName);
       
       if (removed) {
         console.log(`✅ Grupo "${groupName}" removido de monitoreo.\n`);
       } else {
-        console.log(`❌ El grupo "${groupName}" no está siendo monitoreado.\n`);
+        console.log(`❌ Error al remover el grupo "${groupName}".\n`);
       }
       
       this.showMenu();

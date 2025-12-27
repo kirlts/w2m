@@ -88,7 +88,7 @@ export class GroupManager {
     this.groups.set(normalizedName, group);
     await this.save();
     
-    logger.info({ name, jid }, 'Grupo agregado a monitoreo');
+    // Log removido: el CLI ya muestra confirmación al usuario
     return true;
   }
 
@@ -105,7 +105,7 @@ export class GroupManager {
     this.groups.delete(normalizedName);
     await this.save();
     
-    logger.info({ name }, 'Grupo removido de monitoreo');
+    // Log removido: el CLI ya muestra confirmación al usuario
     return true;
   }
 
