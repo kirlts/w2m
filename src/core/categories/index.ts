@@ -165,21 +165,35 @@ export class CategoryManager {
    * El separador por defecto es ",," pero puede ser configurado por categoría (1-3 caracteres)
    */
   detectCategory(messageContent: string): { categoryName: string; content: string } | null {
-    // Iterar sobre todas las categorías y buscar coincidencia con su separador
+    // Iterar sobre todas las categorías y buscar coincidencia con su separador al PRINCIPIO
     for (const category of this.categories.values()) {
       const separator = category.separator || ',,';
-      const separatorIndex = messageContent.indexOf(separator);
       
-      if (separatorIndex === -1 || separatorIndex === 0) {
+      // El separador debe estar al PRINCIPIO del mensaje
+      if (!messageContent.startsWith(separator)) {
         continue;
       }
 
-      const potentialCategory = messageContent.substring(0, separatorIndex).trim();
-      // Eliminar espacios en blanco justo después del separador
-      const rawContent = messageContent.substring(separatorIndex + separator.length);
-      const content = rawContent.replace(/^\s+/, ''); // Quitar espacios al inicio
+      // Extraer el contenido después del separador
+      const contentAfterSeparator = messageContent.substring(separator.length).trimStart();
+      
+      // Buscar el primer espacio o el final para separar categoría del contenido
+      const firstSpaceIndex = contentAfterSeparator.indexOf(' ');
+      
+      let potentialCategory: string;
+      let content: string;
+      
+      if (firstSpaceIndex === -1) {
+        // No hay espacio, todo es la categoría (sin contenido)
+        potentialCategory = contentAfterSeparator;
+        content = '';
+      } else {
+        // Separar categoría (antes del primer espacio) y contenido (después)
+        potentialCategory = contentAfterSeparator.substring(0, firstSpaceIndex);
+        content = contentAfterSeparator.substring(firstSpaceIndex + 1).trim();
+      }
 
-      if (!potentialCategory || !content) {
+      if (!potentialCategory || potentialCategory.length === 0) {
         continue;
       }
 

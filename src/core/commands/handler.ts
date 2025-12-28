@@ -45,52 +45,28 @@ export class CommandHandler {
     
     // Detectar comando "menu,," o "menu" o ",,menu" (por compatibilidad)
     if (trimmed === 'menu,,' || trimmed === 'menu' || trimmed === ',,menu') {
-      return this.showMainMenu();
+      return this.showMainMenu(userId);
     }
 
     // Verificar si hay un comando pendiente (estado)
     const state = this.commandState.get(userId);
     if (state && state.waitingForInput) {
+      if (state.currentMenu === 'main') {
+        // Procesar comando del menú principal
+        return await this.handleMainMenuCommand(trimmed, userId);
+      }
       return await this.handleInput(command, state, userId);
     }
 
-    // Comandos principales
-    switch (trimmed) {
-      case '1':
-      case 'qr':
-        return await this.handleQR();
-      case '2':
-      case 'estado':
-      case 'status':
-        return this.handleStatus();
-      case '3':
-      case 'desconectar':
-      case 'disconnect':
-        return await this.handleDisconnect();
-      case '4':
-      case 'grupos':
-      case 'groups':
-        return this.handleGroupsMenu();
-      case '5':
-      case 'categorias':
-      case 'categories':
-        return this.handleCategoriesMenu();
-      case '6':
-      case 'salir':
-      case 'exit':
-        this.clearState(userId);
-        return { text: '👋 ¡Hasta luego!' };
-      default:
-        // Si no hay estado pendiente y no es un comando reconocido, retornar null
-        // para que el mensaje se procese normalmente (no como comando)
-        return null;
-    }
+    // Si no hay estado pendiente y no es "menu", retornar null
+    // para que el mensaje se procese normalmente (categorización)
+    return null;
   }
 
   /**
    * Mostrar menú principal
    */
-  private showMainMenu(): CommandResponse {
+  private showMainMenu(userId: string = 'default'): CommandResponse {
     const isConnected = this.context.ingestor.isConnected();
     const groups = this.context.groupManager.getAllGroups();
     const categories = this.context.categoryManager.getAllCategories();
@@ -110,7 +86,52 @@ export class CommandHandler {
 
 _Escribe el número o el nombre del comando_`;
 
-    return { text: menu };
+    // Establecer estado pendiente para permitir comandos del menú principal
+    this.commandState.set(userId, {
+      waitingForInput: true,
+      currentMenu: 'main',
+      step: 'selectOption'
+    });
+
+    return { text: menu, requiresInput: true };
+  }
+
+  /**
+   * Manejar comandos del menú principal
+   */
+  private async handleMainMenuCommand(command: string, userId: string): Promise<CommandResponse> {
+    switch (command) {
+      case '1':
+      case 'qr':
+        this.clearState(userId);
+        return await this.handleQR();
+      case '2':
+      case 'estado':
+      case 'status':
+        // Mantener estado para poder ejecutar más comandos
+        return this.handleStatus();
+      case '3':
+      case 'desconectar':
+      case 'disconnect':
+        this.clearState(userId);
+        return await this.handleDisconnect();
+      case '4':
+      case 'grupos':
+      case 'groups':
+        return this.handleGroupsMenu(userId);
+      case '5':
+      case 'categorias':
+      case 'categories':
+        return this.handleCategoriesMenu(userId);
+      case '6':
+      case 'salir':
+      case 'exit':
+        this.clearState(userId);
+        return { text: '👋 ¡Hasta luego!' };
+      default:
+        // Si el comando no es reconocido, mantener el menú y mostrar error
+        return { text: '❌ Opción inválida. Escribe un número del 1 al 6 o el nombre del comando.', requiresInput: true };
+    }
   }
 
   /**
@@ -118,15 +139,15 @@ _Escribe el número o el nombre del comando_`;
    */
   private async handleQR(): Promise<CommandResponse> {
     if (this.context.ingestor.isConnected()) {
-      return { text: '⚠️ Ya estás conectado. Desconecta primero si quieres generar un nuevo QR.' };
+      return { text: '⚠️ Ya estás conectado. Desconecta primero si quieres generar un nuevo QR.\n\n_Escribe "menu" para volver al menú principal_' };
     }
 
     try {
       await this.context.ingestor.generateQR();
-      return { text: '🔄 Generando código QR... Revisa el dashboard web o la consola para verlo.' };
+      return { text: '🔄 Generando código QR... Revisa el dashboard web o la consola para verlo.\n\n_Escribe "menu" para volver al menú principal_' };
     } catch (error: any) {
       logger.error({ error: error.message }, 'Error al generar QR desde comando');
-      return { text: '❌ Error al generar QR. Intenta de nuevo.' };
+      return { text: '❌ Error al generar QR. Intenta de nuevo.\n\n_Escribe "menu" para volver al menú principal_' };
     }
   }
 
@@ -148,7 +169,10 @@ _Escribe el número o el nombre del comando_`;
 Estado: ${statusText}
 Detalle: ${stateText}
 Grupos monitoreados: ${groups.length}
-Categorías: ${categories.length}`
+Categorías: ${categories.length}
+
+_Escribe otro comando del menú (1-6) o "menu" para volver al menú principal_`,
+      requiresInput: true
     };
   }
 
@@ -157,22 +181,22 @@ Categorías: ${categories.length}`
    */
   private async handleDisconnect(): Promise<CommandResponse> {
     if (!this.context.ingestor.isConnected()) {
-      return { text: '⚠️ No hay conexión activa.' };
+      return { text: '⚠️ No hay conexión activa.\n\n_Escribe "menu" para volver al menú principal_' };
     }
 
     try {
       await this.context.ingestor.stop();
-      return { text: '✅ Desconectado exitosamente.' };
+      return { text: '✅ Desconectado exitosamente.\n\n_Escribe "menu" para volver al menú principal_' };
     } catch (error: any) {
       logger.error({ error: error.message }, 'Error al desconectar desde comando');
-      return { text: '❌ Error al desconectar.' };
+      return { text: '❌ Error al desconectar.\n\n_Escribe "menu" para volver al menú principal_' };
     }
   }
 
   /**
    * Mostrar menú de grupos
    */
-  private handleGroupsMenu(): CommandResponse {
+  private handleGroupsMenu(userId: string = 'default'): CommandResponse {
     const monitoredGroups = this.context.groupManager.getAllGroups();
     
     let groupsText = '';
@@ -197,7 +221,7 @@ ${groupsText}
 _Escribe el número de la opción_`;
 
     // Guardar estado para esperar input
-    this.commandState.set('default', {
+    this.commandState.set(userId, {
       waitingForInput: true,
       currentMenu: 'groups',
       step: 'selectOption'
@@ -209,7 +233,7 @@ _Escribe el número de la opción_`;
   /**
    * Mostrar menú de categorías
    */
-  private handleCategoriesMenu(): CommandResponse {
+  private handleCategoriesMenu(userId: string = 'default'): CommandResponse {
     const categories = this.context.categoryManager.getAllCategories();
     
     let categoriesText = '';
@@ -236,7 +260,7 @@ ${categoriesText}
 _Escribe el número de la opción_`;
 
     // Guardar estado para esperar input
-    this.commandState.set('default', {
+    this.commandState.set(userId, {
       waitingForInput: true,
       currentMenu: 'categories',
       step: 'selectOption'
@@ -336,9 +360,8 @@ _Escribe el número de la opción_`;
 
     // Si está en paso de seleccionar grupo para agregar
     if (state.step === 'selectGroup' && state.availableGroups) {
-      if (input.toLowerCase() === 'cancelar') {
-        this.commandState.delete(userId);
-        return this.handleGroupsMenu();
+      if (input.toLowerCase() === 'cancelar' || input.toLowerCase() === 'menu') {
+        return this.handleGroupsMenu(userId);
       }
 
       const groupIndex = parseInt(input, 10) - 1;
@@ -362,9 +385,8 @@ _Escribe el número de la opción_`;
 
     // Si está en paso de remover grupo
     if (state.step === 'removeGroup' && state.monitoredGroups) {
-      if (input.toLowerCase() === 'cancelar') {
-        this.commandState.delete(userId);
-        return this.handleGroupsMenu();
+      if (input.toLowerCase() === 'cancelar' || input.toLowerCase() === 'menu') {
+        return this.handleGroupsMenu(userId);
       }
 
       const groupIndex = parseInt(input, 10) - 1;
@@ -386,10 +408,9 @@ _Escribe el número de la opción_`;
    * Manejar input en menú de categorías
    */
   private async handleCategoriesInput(input: string, state: any, userId: string): Promise<CommandResponse> {
-    if (input === '5' || input.toLowerCase() === 'volver') {
-      this.commandState.delete(userId);
-      return this.showMainMenu();
-    }
+      if (input === '5' || input.toLowerCase() === 'volver' || input.toLowerCase() === 'menu') {
+        return this.showMainMenu(userId);
+      }
 
     // Implementación simplificada - solo mostrar mensaje por ahora
     // Se puede expandir después
