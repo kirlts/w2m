@@ -58,6 +58,7 @@ export class BaileysIngestor implements IngestorInterface {
    * Configurar CommandHandler (llamado desde index.ts después de inicializar categoryManager)
    */
   setCategoryManager(categoryManager: CategoryManager): void {
+    logger.debug('Configurando CommandHandler con CategoryManager');
     this.categoryManager = categoryManager;
     const context: CommandContext = {
       ingestor: this,
@@ -68,6 +69,7 @@ export class BaileysIngestor implements IngestorInterface {
       }
     };
     this.commandHandler = new CommandHandler(context);
+    logger.info('✅ CommandHandler configurado correctamente');
   }
 
   async initialize(): Promise<void> {
@@ -287,32 +289,46 @@ export class BaileysIngestor implements IngestorInterface {
             ? 'Yo' 
             : this.getSenderName(message, groupMetadata, senderJid);
           
+          logger.debug({ groupName, messageContent, isMonitored: this.groupManager.isMonitored(groupName), hasCommandHandler: !!this.commandHandler }, 'Mensaje recibido en grupo');
+          
           // Detectar comando "menu,," o "menu" (solo en grupos monitoreados)
-          if (this.commandHandler && this.groupManager.isMonitored(groupName)) {
+          if (this.groupManager.isMonitored(groupName)) {
             const trimmedContent = messageContent.toLowerCase().trim();
-            if (trimmedContent === 'menu,,' || trimmedContent === 'menu') {
-              try {
-                const userId = `${senderJid}-${remoteJid}`;
-                const response = await this.commandHandler.processCommand('menu', userId);
-                if (response) {
-                  await this.sendMessageToGroup(groupName, response.text);
-                  continue; // No procesar como mensaje normal
+            logger.debug({ trimmedContent, hasCommandHandler: !!this.commandHandler }, 'Procesando mensaje en grupo monitoreado');
+            
+            // Solo procesar comandos si commandHandler está disponible
+            if (this.commandHandler) {
+              if (trimmedContent === 'menu,,' || trimmedContent === 'menu') {
+                try {
+                  logger.debug({ groupName, senderJid }, 'Comando menu detectado');
+                  const userId = `${senderJid}-${remoteJid}`;
+                  const response = await this.commandHandler.processCommand('menu', userId);
+                  if (response) {
+                    logger.debug({ groupName, responseLength: response.text.length }, 'Respuesta generada, enviando mensaje');
+                    await this.sendMessageToGroup(groupName, response.text);
+                    logger.info({ groupName }, '✅ Menú enviado correctamente');
+                    continue; // No procesar como mensaje normal
+                  }
+                } catch (error: any) {
+                  logger.error({ error: error.message, stack: error.stack }, '❌ Error al procesar comando menu');
                 }
-              } catch (error: any) {
-                logger.error({ error: error.message }, 'Error al procesar comando menu');
+              } else {
+                // Verificar si hay un comando pendiente (estado)
+                try {
+                  const userId = `${senderJid}-${remoteJid}`;
+                  const response = await this.commandHandler.processCommand(messageContent, userId);
+                  if (response) {
+                    logger.debug({ groupName }, 'Comando procesado, enviando respuesta');
+                    await this.sendMessageToGroup(groupName, response.text);
+                    continue; // No procesar como mensaje normal
+                  }
+                } catch (error: any) {
+                  // Si falla, continuar con procesamiento normal
+                  logger.debug({ error: error.message }, 'Comando no reconocido, continuando con mensaje normal');
+                }
               }
             } else {
-              // Verificar si hay un comando pendiente (estado)
-              try {
-                const userId = `${senderJid}-${remoteJid}`;
-                const response = await this.commandHandler.processCommand(messageContent, userId);
-                if (response) {
-                  await this.sendMessageToGroup(groupName, response.text);
-                  continue; // No procesar como mensaje normal
-                }
-              } catch (error: any) {
-                // Si falla, continuar con procesamiento normal
-              }
+              logger.debug({ groupName }, 'CommandHandler no disponible (categoryManager no configurado)');
             }
           }
           
@@ -419,24 +435,28 @@ export class BaileysIngestor implements IngestorInterface {
    */
   async sendMessageToGroup(groupName: string, text: string): Promise<void> {
     if (!this.socket || !this.isConnected()) {
+      logger.error({ groupName }, 'No hay conexión activa para enviar mensaje');
       throw new Error('No hay conexión activa');
     }
 
     try {
       // Buscar el grupo por nombre
+      logger.debug({ groupName }, 'Buscando grupo para enviar mensaje');
       const groups = await this.socket.groupFetchAllParticipating();
       const groupList = Object.values(groups);
       const group = groupList.find(g => (g.subject || 'Sin nombre') === groupName);
 
       if (!group) {
+        logger.error({ groupName, availableGroups: groupList.map(g => g.subject || 'Sin nombre') }, 'Grupo no encontrado');
         throw new Error(`Grupo "${groupName}" no encontrado`);
       }
 
+      logger.debug({ groupName, groupId: group.id, textLength: text.length }, 'Enviando mensaje al grupo');
       // Enviar mensaje
       await this.socket.sendMessage(group.id, { text });
-      logger.debug({ groupName }, 'Mensaje enviado a grupo');
+      logger.info({ groupName }, '✅ Mensaje enviado a grupo correctamente');
     } catch (error: any) {
-      logger.error({ error: error.message, groupName }, 'Error al enviar mensaje a grupo');
+      logger.error({ error: error.message, stack: error.stack, groupName }, '❌ Error al enviar mensaje a grupo');
       throw error;
     }
   }

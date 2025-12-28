@@ -25,7 +25,11 @@ const ingestor = await createIngestor(groupManager);
 
 // Configurar categoryManager en ingestor si soporta comandos (Baileys)
 if ('setCategoryManager' in ingestor && typeof (ingestor as any).setCategoryManager === 'function') {
+  logger.debug('Configurando CategoryManager en ingestor para comandos');
   (ingestor as any).setCategoryManager(categoryManager);
+  logger.info('✅ CategoryManager configurado en ingestor');
+} else {
+  logger.debug('Ingestor no soporta setCategoryManager (comandos no disponibles)');
 }
 
 // Manejar señales de terminación
