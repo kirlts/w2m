@@ -289,47 +289,36 @@ export class BaileysIngestor implements IngestorInterface {
             ? 'Yo' 
             : this.getSenderName(message, groupMetadata, senderJid);
           
-          logger.debug({ groupName, messageContent, isMonitored: this.groupManager.isMonitored(groupName), hasCommandHandler: !!this.commandHandler }, 'Mensaje recibido en grupo');
-          
-          // Detectar comando "menu,," o "menu" (solo en grupos monitoreados)
-          if (this.groupManager.isMonitored(groupName)) {
+          // Solo procesar comandos si el grupo está monitoreado y tenemos commandHandler
+          if (this.groupManager.isMonitored(groupName) && this.commandHandler) {
             const trimmedContent = messageContent.toLowerCase().trim();
-            logger.debug({ trimmedContent, hasCommandHandler: !!this.commandHandler }, 'Procesando mensaje en grupo monitoreado');
+            const userId = `${senderJid}-${remoteJid}`;
             
-            // Solo procesar comandos si commandHandler está disponible
-            if (this.commandHandler) {
-              if (trimmedContent === 'menu,,' || trimmedContent === 'menu') {
-                try {
+            // Solo procesar si es "menu,," o "menu" explícitamente, o si hay un estado pendiente
+            const isMenuCommand = trimmedContent === 'menu,,' || trimmedContent === 'menu';
+            const hasPendingState = this.commandHandler.hasPendingState(userId);
+            
+            if (isMenuCommand || hasPendingState) {
+              try {
+                if (isMenuCommand) {
                   logger.debug({ groupName, senderJid }, 'Comando menu detectado');
-                  const userId = `${senderJid}-${remoteJid}`;
-                  const response = await this.commandHandler.processCommand('menu', userId);
-                  if (response) {
-                    logger.debug({ groupName, responseLength: response.text.length }, 'Respuesta generada, enviando mensaje');
-                    await this.sendMessageToGroup(groupName, response.text);
-                    logger.info({ groupName }, '✅ Menú enviado correctamente');
-                    continue; // No procesar como mensaje normal
-                  }
-                } catch (error: any) {
-                  logger.error({ error: error.message, stack: error.stack }, '❌ Error al procesar comando menu');
+                } else {
+                  logger.debug({ groupName, senderJid }, 'Procesando comando con estado pendiente');
                 }
-              } else {
-                // Verificar si hay un comando pendiente (estado)
-                try {
-                  const userId = `${senderJid}-${remoteJid}`;
-                  const response = await this.commandHandler.processCommand(messageContent, userId);
-                  if (response) {
-                    logger.debug({ groupName }, 'Comando procesado, enviando respuesta');
-                    await this.sendMessageToGroup(groupName, response.text);
-                    continue; // No procesar como mensaje normal
-                  }
-                } catch (error: any) {
-                  // Si falla, continuar con procesamiento normal
-                  logger.debug({ error: error.message }, 'Comando no reconocido, continuando con mensaje normal');
+                
+                const response = await this.commandHandler.processCommand(messageContent, userId);
+                if (response) {
+                  // Usar el jid directamente para evitar buscar el grupo de nuevo
+                  await this.sendMessageToGroupByJid(remoteJid, response.text);
+                  logger.info({ groupName, isMenuCommand, hasPendingState }, '✅ Respuesta enviada correctamente');
+                  continue; // No procesar como mensaje normal
                 }
+              } catch (error: any) {
+                logger.error({ error: error.message, stack: error.stack }, '❌ Error al procesar comando');
+                // Continuar con procesamiento normal si falla
               }
-            } else {
-              logger.debug({ groupName }, 'CommandHandler no disponible (categoryManager no configurado)');
             }
+            // Si no es un comando y no hay estado pendiente, continuar con procesamiento normal
           }
           
           // Solo procesar mensajes de grupos monitoreados (después de comandos)
@@ -431,6 +420,25 @@ export class BaileysIngestor implements IngestorInterface {
   }
 
   /**
+   * Enviar mensaje a un grupo por jid (más eficiente)
+   */
+  private async sendMessageToGroupByJid(jid: string, text: string): Promise<void> {
+    if (!this.socket || !this.isConnected()) {
+      logger.error({ jid }, 'No hay conexión activa para enviar mensaje');
+      throw new Error('No hay conexión activa');
+    }
+
+    try {
+      logger.debug({ jid, textLength: text.length }, 'Enviando mensaje al grupo por jid');
+      await this.socket.sendMessage(jid, { text });
+      logger.info({ jid }, '✅ Mensaje enviado a grupo correctamente');
+    } catch (error: any) {
+      logger.error({ error: error.message, stack: error.stack, jid }, '❌ Error al enviar mensaje a grupo');
+      throw error;
+    }
+  }
+
+  /**
    * Enviar mensaje a un grupo (implementación opcional)
    */
   async sendMessageToGroup(groupName: string, text: string): Promise<void> {
@@ -452,7 +460,6 @@ export class BaileysIngestor implements IngestorInterface {
       }
 
       logger.debug({ groupName, groupId: group.id, textLength: text.length }, 'Enviando mensaje al grupo');
-      // Enviar mensaje
       await this.socket.sendMessage(group.id, { text });
       logger.info({ groupName }, '✅ Mensaje enviado a grupo correctamente');
     } catch (error: any) {

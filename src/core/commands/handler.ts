@@ -30,6 +30,14 @@ export class CommandHandler {
   }
 
   /**
+   * Verificar si hay un estado pendiente para un usuario
+   */
+  hasPendingState(userId: string): boolean {
+    const state = this.commandState.get(userId);
+    return state && state.waitingForInput === true;
+  }
+
+  /**
    * Procesar comando y generar respuesta
    */
   async processCommand(command: string, userId: string = 'default'): Promise<CommandResponse | null> {
@@ -70,9 +78,12 @@ export class CommandHandler {
       case '6':
       case 'salir':
       case 'exit':
+        this.clearState(userId);
         return { text: '👋 ¡Hasta luego!' };
       default:
-        return { text: '❌ Opción inválida. Escribe "menu" para ver las opciones.' };
+        // Si no hay estado pendiente y no es un comando reconocido, retornar null
+        // para que el mensaje se procese normalmente (no como comando)
+        return null;
     }
   }
 
