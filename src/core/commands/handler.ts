@@ -43,8 +43,8 @@ export class CommandHandler {
   async processCommand(command: string, userId: string = 'default'): Promise<CommandResponse | null> {
     const trimmed = command.trim().toLowerCase();
     
-    // Detectar comando "menu,," o "menu"
-    if (trimmed === 'menu,,' || trimmed === 'menu') {
+    // Detectar comando "menu,," o "menu" o ",,menu" (por compatibilidad)
+    if (trimmed === 'menu,,' || trimmed === 'menu' || trimmed === ',,menu') {
       return this.showMainMenu();
     }
 

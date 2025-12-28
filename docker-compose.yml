@@ -59,18 +59,9 @@ services:
     
     # Volumes
     volumes:
-      # WhatsApp session data (CRITICAL - do not lose)
-      - ./data/session:/app/data/session
-      
-      # Vault with generated Markdown files
-      - ./data/vault:/app/data/vault
-      
-      # Application logs
-      - ./data/logs:/app/data/logs
-      
-      # Google Drive Service Account credentials
-      # Note: Not :ro to allow permission adjustments
-      - ./data/googledrive:/app/data/googledrive
+      # Main data directory (includes all subdirectories and JSON files)
+      # This ensures groups, categories, and all data persist between container restarts
+      - ./data:/app/data
       
       # Git configuration (if using SSH)
       - ~/.ssh:/home/w2m/.ssh:ro

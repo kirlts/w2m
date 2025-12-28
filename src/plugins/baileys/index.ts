@@ -295,7 +295,8 @@ export class BaileysIngestor implements IngestorInterface {
             const userId = `${senderJid}-${remoteJid}`;
             
             // Solo procesar si es "menu,," o "menu" explícitamente, o si hay un estado pendiente
-            const isMenuCommand = trimmedContent === 'menu,,' || trimmedContent === 'menu';
+            // También aceptar ",,menu" por compatibilidad (separador al inicio)
+            const isMenuCommand = trimmedContent === 'menu,,' || trimmedContent === 'menu' || trimmedContent === ',,menu';
             const hasPendingState = this.commandHandler.hasPendingState(userId);
             
             if (isMenuCommand || hasPendingState) {
